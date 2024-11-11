@@ -153,14 +153,8 @@ data <- data %>%
 
 # ------------------------------- Top 100 complaints in 10 categories by Borough -------------------------
 
-# Count complaints by type and borough, select the top 100 complaints
-top_complaints <- data %>%
-  count(ComplaintType, Borough) %>%
-  top_n(100, n) %>%
-  arrange(desc(n))
-
 # Assign detailed categories to complaint types
-top_complaints <- top_complaints %>%
+data <- data %>%
   mutate(Category = case_when(
     ComplaintType %in% c("Noise", "Noise - Residential", "Noise - Commercial", "Noise - Vehicle", 
                          "Noise - Street/Sidewalk", "Noise - Park", "Noise - House of Worship", 
@@ -202,25 +196,5 @@ top_complaints <- top_complaints %>%
     TRUE ~ "Other"
   ))
 
-# Aggregate by borough and category to get total complaints by category and borough
-category_counts_by_borough <- top_complaints %>%
-  group_by(Borough, Category) %>%
-  summarise(TotalComplaints = sum(n), .groups = "drop") %>%
-  arrange(Borough, desc(TotalComplaints))
-
-
-ggplot(data = category_counts_by_borough, aes(x = Borough, y = TotalComplaints, fill = Category)) +
-  geom_bar(stat = "identity", position = "stack") +
-  labs(title = "Complaints by Category and Borough", x = "Borough", y = "Number of Complaints") +
-  theme_minimal() +
-  scale_fill_brewer(palette = "Paired") +  # Usar uma paleta predefinida
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-    plot.title = element_text(size = 16, face = "bold"),
-    legend.position = "right",
-    legend.title = element_text(size = 12),
-    legend.text = element_text(size = 10)
-  )
-
-
 View(data)
+
