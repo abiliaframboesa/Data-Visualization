@@ -151,8 +151,10 @@ data <- data %>%
     )
   )
 
-# ------------------------------- Top 100 complaints in 10 categories by Borough -------------------------
 
+##############
+# Categories
+##############
 # Assign detailed categories to complaint types
 data <- data %>%
   mutate(Category = case_when(
