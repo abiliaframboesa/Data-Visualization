@@ -6,6 +6,7 @@
 library(data.table)
 library(dplyr)
 library(ggplot2)
+library(sf)
 
 # Reading a local file
 data <- fread("C:/Users/dcssi/OneDrive/Ambiente de Trabalho/2ºano_Mestrado/VD/NYC_311_Data_20241009.csv")
@@ -34,6 +35,14 @@ print(missing_summary)
 # Setting a threshold: drop columns with more than 60% missing values
 threshold <- 0.60 * nrow(data)
 dataTrimmed <- data %>% select_if(~ count_missing(.) < threshold)
+
+# If both 'Incident Address' and 'Latitude'/'Longitude' are missing or empty, remove the row
+dataTrimmed <- dataTrimmed %>% filter(
+  !( (is.na(`Incident Address`) | `Incident Address` == "" | grepl("^\\s*$", `Incident Address`)) & 
+       (is.na(Latitude) | Latitude == "" | grepl("^\\s*$", Latitude)) & 
+       (is.na(Longitude) | Longitude == "" | grepl("^\\s*$", Longitude)) )
+)
+
 
 # Removal of columns that have already inherent info on the dataset, or that aren't really useful
 dataTrimmed <- dataTrimmed %>%
@@ -150,7 +159,6 @@ data <- data %>%
       TRUE ~ "Indeterminate"
     )
   )
-
 
 ##############
 # Categories
