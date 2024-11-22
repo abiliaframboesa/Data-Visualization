@@ -343,7 +343,7 @@ ggplot() +
 # ---------------------- ANA LU ------------------------
 # DIAS DA SEMANA
 
-install.packages("lubridate")
+#install.packages("lubridate")
 library(lubridate)
 library(tidyr)
 
