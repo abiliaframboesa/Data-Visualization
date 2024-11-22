@@ -13,6 +13,8 @@ library(leaflet)
 
 # Reading a local file
 data <- fread("C:/Users/dcssi/OneDrive/Ambiente de Trabalho/2ºano_Mestrado/VD/NYC_311_Data_20241009.csv")
+data <- fread("C:/Users/Ana Luísa/Desktop/Mestrado em Bioinformática e Biologia Computacional/2 ano/Visualização de Dados/Projeto/NYC_311_Data_20241009.csv")
+
 
 # ------------------------------------- Pre-processing ------------------------------------------
 
