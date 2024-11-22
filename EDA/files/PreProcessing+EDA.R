@@ -347,46 +347,92 @@ ggplot() +
 library(lubridate)
 library(tidyr)
 
+# Convert the Date columns to POSIXct acceptable format
+data$IssuedDate <- as.POSIXct(strptime(data$`Created Date`, format="%m/%d/%Y %I:%M:%S %p"))
 
-# Assuming data frame is named `data` and column is "Created Date"
-data_clean <- data_clean %>%
-  separate(`Created Date`, into = c("Date", "Time"), sep = " ", extra = "merge")
-View(data_clean)
-
-
-# Convert 'Time' column to POSIXct without the date part
-data_clean$Time <- strptime(data_clean$Time, format="%I:%M:%S %p")
-# Format to show only hours and minutes
-data_clean$Time <- format(data_clean$Time, "%H:%M")
-View(data_clean)
-
-# Convert 'Date' column to POSIXct 
-data_clean$Date <- as.POSIXct(strptime(data_clean$`Date`, format="%m/%d/%Y %I:%M:%S %p"))
+# IssueDuration: Calculate the duration between IssuedDate and ResolutionDate in seconds
+data$IssueDuration <- difftime(data$ResolutionDate, data$IssuedDate, units = "secs")
+# IssueBalance: Calculate the balance between DueDate and ResolutionDate in seconds
+# Issue Balance 
+data$IssueBalance <- difftime(data$DueDate, data$ResolutionDate, units = "secs")
 
 
-# Extract the day of the week from your existing Date column (assuming you already have a Date column)
-data_clean$Weekday <- weekdays(data_clean$Date)  # Assuming you have a "Date" column with date values
-# Convert the 'Date' column to Date format
-data_clean$Date <- as.Date(data_clean$Date, format="%m/%d/%Y")
-# Extract the weekday name from the Date column
-data_clean$Weekday <- weekdays(data_clean$Date)
+# Criar uma coluna com o dia da semana
+Sys.setlocale("LC_TIME", "C")
+data$weekday <- weekdays(data$IssuedDate)
+View(data)
 
-View(data_clean)
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(data.table)
 
+# Ensure the weekdays are in English for consistency
+Sys.setlocale("LC_TIME", "C")
 
-# Count occurrences of each Time and Weekday combination
-time_weekday_counts <- data_clean %>%
-  count(Weekday, Time)
+# Extract the hour of the day from the IssuedDate
+data$hour <- format(data$IssuedDate, "%H")
 
+# Count complaints by weekday and hour
+complaint_counts <- data %>%
+  group_by(weekday, hour) %>%
+  summarise(count = n())
 
-# Create the heatmap
-ggplot(time_weekday_counts, aes(x = Weekday, y = Time, fill = n)) +
-  geom_tile(color = "white") +  # Adds white borders between tiles
-  scale_fill_gradient(low = "white", high = "blue") +  # Adjust colors based on count
-  labs(title = "Heatmap of Time Occurrences by Day of the Week", 
-       x = "Day of the Week", 
-       y = "Time of Day") +
+# Convert weekday to an ordered factor to keep days in order
+complaint_counts$weekday <- factor(complaint_counts$weekday, 
+                                   levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+# Plot the heatmap
+heatmap_24h <- ggplot(complaint_counts, aes(x = hour, y = weekday, fill = count)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Number of Complaints per Hour and Day of the Week",
+       x = "Hour of the Day",
+       y = "Day of the Week",
+       fill = "Complaint Count") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Print the plot
+print(heatmap_24h)
+ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_24h.png", plot = heatmap_24h, width = 6, height = 4, dpi = 300)
+
+
+# ----- DE 3 EM 3 HORAS 
+
+# Ensure the weekdays are in English for consistency
+Sys.setlocale("LC_TIME", "C")
+
+# Extract the hour of the day from the IssuedDate
+data$hour <- as.numeric(format(data$IssuedDate, "%H"))
+
+# Define the hour ranges and create a new column for time periods
+data$hour_group <- cut(data$hour, 
+                       breaks = c(0, 3, 6, 9, 12, 15, 18, 21, 24), 
+                       labels = c("0-3", "3-6", "6-9", "9-12", "12-15", "15-18", "18-21", "21-24"),
+                       include.lowest = TRUE,
+                       right = FALSE)
+
+# Count complaints by weekday and hour group
+complaint_counts <- data %>%
+  group_by(weekday, hour_group) %>%
+  summarise(count = n())
+
+# Convert weekday to an ordered factor to keep days in order
+complaint_counts$weekday <- factor(complaint_counts$weekday, 
+                                   levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+# Plot the heatmap
+heatmap_3_3 <- ggplot(complaint_counts, aes(x = hour_group, y = weekday, fill = count)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Number of Complaints per Time Period and Day of the Week",
+       x = "Time Period",
+       y = "Day of the Week",
+       fill = "Complaint Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_3_3.png", plot = heatmap_3_3, width = 6, height = 4, dpi = 300)
 
 
