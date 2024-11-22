@@ -337,3 +337,56 @@ ggplot() +
         panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())
 
+
+
+
+# ---------------------- ANA LU ------------------------
+# DIAS DA SEMANA
+
+install.packages("lubridate")
+library(lubridate)
+library(tidyr)
+
+
+# Assuming data frame is named `data` and column is "Created Date"
+data_clean <- data_clean %>%
+  separate(`Created Date`, into = c("Date", "Time"), sep = " ", extra = "merge")
+View(data_clean)
+
+
+# Convert 'Time' column to POSIXct without the date part
+data_clean$Time <- strptime(data_clean$Time, format="%I:%M:%S %p")
+# Format to show only hours and minutes
+data_clean$Time <- format(data_clean$Time, "%H:%M")
+View(data_clean)
+
+# Convert 'Date' column to POSIXct 
+data_clean$Date <- as.POSIXct(strptime(data_clean$`Date`, format="%m/%d/%Y %I:%M:%S %p"))
+
+
+# Extract the day of the week from your existing Date column (assuming you already have a Date column)
+data_clean$Weekday <- weekdays(data_clean$Date)  # Assuming you have a "Date" column with date values
+# Convert the 'Date' column to Date format
+data_clean$Date <- as.Date(data_clean$Date, format="%m/%d/%Y")
+# Extract the weekday name from the Date column
+data_clean$Weekday <- weekdays(data_clean$Date)
+
+View(data_clean)
+
+
+# Count occurrences of each Time and Weekday combination
+time_weekday_counts <- data_clean %>%
+  count(Weekday, Time)
+
+
+# Create the heatmap
+ggplot(time_weekday_counts, aes(x = Weekday, y = Time, fill = n)) +
+  geom_tile(color = "white") +  # Adds white borders between tiles
+  scale_fill_gradient(low = "white", high = "blue") +  # Adjust colors based on count
+  labs(title = "Heatmap of Time Occurrences by Day of the Week", 
+       x = "Day of the Week", 
+       y = "Time of Day") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+
+
