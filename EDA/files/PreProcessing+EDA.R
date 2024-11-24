@@ -418,3 +418,293 @@ heatmap_3_3 <- ggplot(complaint_counts, aes(x = hour_group, y = weekday, fill = 
 print(heatmap_3_3)
 ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_3_3.png", plot = heatmap_3_3, width = 6, height = 4, dpi = 300)
 
+
+#  ------------------- PIEPLOT OF COMPLAINT TYPES 
+
+
+# Summarize the data into a data frame
+complaint_summary <- as.data.frame(table(data$ComplaintType))
+colnames(complaint_summary) <- c("ComplaintType", "Count")
+
+# Sort by count and select the top 10 complaint types
+top10_complaints <- complaint_summary[order(-complaint_summary$Count), ][1:10, ]
+
+
+# Calculate percentages for each ComplaintType
+top10_complaints$Percentage <- round(top10_complaints$Count / sum(top10_complaints$Count) * 100, 1)
+
+# Reorder the ComplaintType factor by Count (in descending order)
+top10_complaints$ComplaintType <- factor(top10_complaints$ComplaintType, 
+                                         levels = top10_complaints$ComplaintType[order(-top10_complaints$Count)])
+
+# Create the pie chart
+ggplot(top10_complaints, aes(x = "", y = Count, fill = ComplaintType)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  geom_text(aes(label = paste0(Percentage, "%")), 
+            position = position_stack(vjust = 0.5)) +
+  labs(title = "Top 10 Complaint Types") +
+  theme_void()
+
+# ------- PIE PLOT DE COMPLAINTS POR CATEGORIAS FALTA POR POR ORDEM
+
+# Summarize the data by Category to count the number of complaints
+category_summary <- data %>%
+  group_by(Category) %>%
+  summarise(Count = n(), .groups = "drop")
+
+# Calculate percentages
+category_summary <- category_summary %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+# Create the pie chart with percentages
+ggplot(category_summary, aes(x = "", y = Count, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +  # Convert to pie chart
+  geom_text(aes(label = paste0(round(Percentage, 1), "%")), 
+            position = position_stack(vjust = 0.5)) +  # Add percentages
+  labs(title = "Complaints by Category") +
+  theme_void() +  # Remove axis labels and background
+  theme(legend.title = element_blank())  # Optional: Remove the legend title
+
+
+# ---------- PIE PLOT DOS DESCRIPTORS PARA NOISE RESIDENTIAL
+
+# Filtrar os dados onde "Complaint Type" é "Noise - Residential"
+filtered_data <- data[data$ComplaintType == "Noise - Residential", ]
+
+# Criar uma tabela de frequência para "Descriptor"
+descriptor_counts <- as.data.frame(table(filtered_data$Descriptor))
+colnames(descriptor_counts) <- c("Descriptor", "Count")
+
+
+# Criar o gráfico circular com percentagens
+ggplot(descriptor_counts, aes(x = "", y = Count, fill = Descriptor)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  labs(title = "Quantidade de Cada Descriptor para Noise - Residential") +
+  theme_void() + # Remove elementos desnecessários
+  theme(axis.text.x = element_blank())  # Remove os rótulos do eixo X
+
+
+# ---------- HEAT MAP DAS HORAS E DIAS DA SEMANA DO NOISE RESIDENTIAL - LOUD MUSIC/PARTY 
+
+# Ensure the weekdays are in English for consistency
+Sys.setlocale("LC_TIME", "C")
+
+
+# Filtrar os dados onde ComplaintType é "Noise - Residential" e Descriptor é "Loud Music/Party"
+filtered_data <- data %>%
+  filter(ComplaintType == "Noise - Residential", Descriptor == "Loud Music/Party")
+
+
+# Extract the hour of the day from the IssuedDate
+filtered_data$hour <- format(filtered_data$IssuedDate, "%H")
+
+
+# Count complaints by weekday and hour
+complaint_counts <- filtered_data %>%
+  group_by(weekday, hour) %>%
+  summarise(count = n())
+
+# Convert weekday to an ordered factor to keep days in order
+complaint_counts$weekday <- factor(complaint_counts$weekday, 
+                                   levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+# Plot the heatmap
+heatmap_24h <- ggplot(complaint_counts, aes(x = hour, y = weekday, fill = count)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Number of Complaints per Hour and Day of the Week",
+       x = "Hour of the Day",
+       y = "Day of the Week",
+       fill = "Complaint Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# Print the plot
+print(heatmap_24h)
+
+
+# ----- SPATIAL HEATMAP 
+
+# Filtrar os dados onde ComplaintType é "Noise - Residential" e Descriptor é "Loud Music/Party"
+filtered_data <- data %>%
+  filter(ComplaintType == "Noise - Residential", Descriptor == "Loud Music/Party")
+
+cleaned_data <- filtered_data %>%
+  filter(!is.na(Latitude), !is.na(Longitude))
+
+# Check if there are still missing values in Latitude or Longitude
+sum(is.na(cleaned_data$Latitude))  # Should return 0
+sum(is.na(cleaned_data$Longitude)) # Should return 0
+
+#View(cleaned_data)
+
+# Aggregate the data by latitude and longitude to count the number of complaints per location
+heatmap_data <- cleaned_data %>%
+  group_by(Latitude, Longitude) %>%
+  summarise(Count = n(), .groups = "drop")
+
+# Load New York City shapefile (you need to download this shapefile beforehand)
+nyc_shapefile <- st_read("geo_export_bca88cbd-0aab-46db-891b-2acf63e33536.shp")
+
+
+# Convert cleaned data to sf object for spatial mapping
+heatmap_sf <- st_as_sf(heatmap_data, coords = c("Longitude", "Latitude"), crs = 4326)
+
+
+ggplot() +
+  geom_sf(data = nyc_shapefile, fill = "lightgray") +  # NYC boundary shapefile
+  stat_density_2d(
+    data = heatmap_data,  # Use the original data frame with lat/lon
+    aes(x = Longitude, y = Latitude, fill = ..level.., alpha = ..level..),
+    geom = "polygon"
+  ) +
+  scale_fill_gradient(low = "blue", high = "red") +  # Density color gradient
+  scale_alpha(range = c(0.1, 0.4), guide = "none") +  # Adjust transparency
+  labs(title = "Density Map: Loud Music/Party Complaints in NYC",
+       x = "Longitude", y = "Latitude", fill = "Density") +
+  theme_minimal()
+
+
+
+# ----------------- TIME SERIES COM DAY OF THE MONTH
+
+library(dplyr)
+library(ggplot2)
+
+# Ensure IssuedDate is in Date format
+data$IssuedDate <- as.Date(data$IssuedDate)
+
+# Aggregate data by IssuedDate and ComplaintType
+time_series_data <- data %>%
+  group_by(IssuedDate, ComplaintType) %>%
+  summarise(Count = n(), .groups = "drop")
+
+# Optional: Filter for top 5 complaint types by total count
+top_complaints <- time_series_data %>%
+  group_by(ComplaintType) %>%
+  summarise(Total = sum(Count)) %>%
+  arrange(desc(Total)) %>%
+  slice_head(n = 5) %>%
+  pull(ComplaintType)
+
+filtered_time_series <- time_series_data %>%
+  filter(ComplaintType %in% top_complaints)
+
+# Plot the time series
+ggplot(filtered_time_series, aes(x = IssuedDate, y = Count, color = ComplaintType)) +
+  geom_line() +
+  labs(
+    title = "Time Series of Complaints by Complaint Type",
+    x = "Day of the month",
+    y = "Number of Complaints",
+    color = "Complaint Type"
+  ) +
+  scale_x_date(
+    date_breaks = "1 day",     # Show every day as a tick mark
+    date_labels = "%d"  # Format dates as YYYY-MM-DD
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate for better readability
+
+# -------- COM DATAS E WEEKDAYS
+
+library(dplyr)
+library(ggplot2)
+
+# Add a weekday column to your time series data
+filtered_time_series <- filtered_time_series %>%
+  mutate(Weekday = weekdays(IssuedDate))  # Get the weekday name from IssuedDate
+
+# Plot the time series with weekdays on the x-axis
+ggplot(filtered_time_series, aes(x = IssuedDate, y = Count, color = ComplaintType)) +
+  geom_line() +
+  labs(
+    title = "Time Series of Complaints by Complaint Type",
+    x = "Date (Weekday)",
+    y = "Number of Complaints",
+    color = "Complaint Type"
+  ) +
+  scale_x_date(
+    date_breaks = "1 day",     # Show every day as a tick mark
+    date_labels = "%d"   # Format dates as YYYY-MM-DD
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotate for better readability
+  scale_x_date(
+    breaks = "1 day",           # Breaks by each day
+    labels = function(x) paste(weekdays(x), "\n", format(x, "%Y-%m-%d"))  # Display weekday + date
+  )
+
+# ----------- COM Blocked Driveway e Illegal Parking A BOLD
+
+
+library(dplyr)
+library(ggplot2)
+
+# Adicionar a coluna Weekday ao seu conjunto de dados
+filtered_time_series <- filtered_time_series %>%
+  mutate(Weekday = weekdays(IssuedDate))  # Obter o nome do dia da semana a partir de IssuedDate
+
+# Definir os complaint types que você quer destacar
+highlight_complaints <- c("Blocked Driveway", "Illegal Parking")
+
+# Plotar a série temporal
+ggplot(filtered_time_series, aes(x = IssuedDate, y = Count, color = ComplaintType)) +
+  geom_line(data = filtered_time_series %>% filter(ComplaintType %in% highlight_complaints), 
+            aes(color = ComplaintType), size = 1.5) +  # Destacar com linha mais grossa
+  geom_line(data = filtered_time_series %>% filter(!ComplaintType %in% highlight_complaints), 
+            aes(color = ComplaintType), size = 0.8) +  # Linhas mais finas para os outros complaint types
+  labs(
+    title = "Time Series of Complaints by Complaint Type",
+    x = "Date (Weekday)",
+    y = "Number of Complaints",
+    color = "Complaint Type"
+  ) +
+  scale_x_date(
+    date_breaks = "1 day",     # Mostrar cada dia como um marco
+    date_labels = "%d"         # Mostrar apenas o dia do mês
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotacionar para melhor legibilidade
+  scale_x_date(
+    breaks = "1 day",           # Breaks by each day
+    labels = function(x) paste(weekdays(x), "\n", format(x, "%Y-%m-%d"))  # Display weekday + date
+  )
+
+# ------ SÓ COM OS NOISES E O UNSANITARY CONDITIONS
+
+# Filter the data to include only the desired complaint types
+filtered_complaints <- filtered_time_series %>%
+  filter(ComplaintType %in% c("Noise - Residential", "Noise - Street/Sidewalk", "UNSANITARY CONDITION")) %>%
+  mutate(Weekday = weekdays(IssuedDate))  # Add weekday column if not already added
+
+# Plot the time series with custom colors for complaint types
+ggplot(filtered_complaints, aes(x = IssuedDate, y = Count, color = ComplaintType)) +
+  geom_line(size = 1) +  # Set line size for better visibility
+  labs(
+    title = "Time Series of Selected Complaints by Complaint Type",
+    x = "Date (Weekday)",
+    y = "Number of Complaints",
+    color = "Complaint Type"
+  ) +
+  scale_color_manual(
+    values = c(
+      "Noise - Residential" = "green",
+      "Noise - Street/Sidewalk" = "lightblue",
+      "UNSANITARY CONDITION" = "pink"
+    )
+  ) +
+  scale_x_date(
+    date_breaks = "1 day",     # Show every day as a tick mark
+    date_labels = "%d"         # Format dates to show only the day of the month
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotate text for better readability
+  scale_x_date(
+    breaks = "1 day",          # Breaks by each day
+    labels = function(x) paste(weekdays(x), "\n", format(x, "%Y-%m-%d"))  # Show weekday and date
+  )
