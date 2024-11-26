@@ -42,11 +42,11 @@ threshold <- 0.60 * nrow(data)
 dataTrimmed <- data %>% select_if(~ count_missing(.) < threshold)
 
 # If both 'Incident Address' and 'Latitude'/'Longitude' are missing or empty, remove the row
-#dataTrimmed <- dataTrimmed %>% filter(
-#  !( (is.na(`Incident Address`) | `Incident Address` == "" | grepl("^\\s*$", `Incident Address`)) & 
-#       (is.na(Latitude) | Latitude == "" | grepl("^\\s*$", Latitude)) & 
-#       (is.na(Longitude) | Longitude == "" | grepl("^\\s*$", Longitude)) )
-#)
+dataTrimmed <- dataTrimmed %>% filter(
+  !( (is.na(`Incident Address`) | `Incident Address` == "" | grepl("^\\s*$", `Incident Address`)) & 
+       (is.na(Latitude) | Latitude == "" | grepl("^\\s*$", Latitude)) & 
+       (is.na(Longitude) | Longitude == "" | grepl("^\\s*$", Longitude)) )
+)
 
 
 # Removal of columns that have already inherent info on the dataset, or that aren't really useful
