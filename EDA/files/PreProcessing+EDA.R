@@ -708,3 +708,285 @@ ggplot(filtered_complaints, aes(x = IssuedDate, y = Count, color = ComplaintType
     breaks = "1 day",          # Breaks by each day
     labels = function(x) paste(weekdays(x), "\n", format(x, "%Y-%m-%d"))  # Show weekday and date
   )
+
+
+# --------------------------------------------------------- Dashboard Diana -------------------------------------------------------------------
+
+
+
+# Preparar dados de nodes e edges (sem as funções extras)
+nodes <- data %>%
+  filter(!is.na(`Incident Zip`) & `Incident Zip` != "") %>%
+  distinct(`Incident Zip`) %>%
+  rename(id = `Incident Zip`)
+
+nodes
+
+edges <- data %>%
+  filter(!is.na(`Incident Zip`) & `Incident Zip` != "") %>%
+  group_by(ComplaintType) %>%
+  filter(n_distinct(`Incident Zip`) > 1) %>%
+  reframe(pairs = list(combn(unique(`Incident Zip`), 2, simplify = FALSE))) %>%
+  filter(lengths(pairs) > 0) %>%
+  unnest(pairs) %>%
+  transmute(from = map_chr(pairs, 1),
+            to = map_chr(pairs, 2),
+            type = ComplaintType)
+
+edges_count <- edges %>%
+  count(from, to) %>%
+  filter(n >= 50)
+
+edges_filtered_with_count <- edges %>%
+  left_join(edges_count, by = c("from", "to")) %>%
+  filter(!is.na(n))
+
+top_complaints <- data %>%
+  count(ComplaintType) %>%
+  arrange(desc(n)) %>%
+  head(5)
+
+top_complaints_types <- top_complaints$ComplaintType
+
+edges_filtered_top_complaints <- edges_filtered_with_count %>%
+  filter(type %in% top_complaints_types)
+
+
+# Carregar os dados de localização dos ZIP Codes
+zip_locations <- read.csv("zip_locations.csv")
+
+
+# Interface do Usuário (UI)
+ui <- fluidPage(
+  titlePanel("Rede de Reclamações por ZIP Code"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("threshold",
+                  "Threshold mínimo de reclamações:",
+                  min = 1, max = 100, value = 50),
+      
+      checkboxGroupInput("weekday_filter",
+                         "Selecione os dias da semana:",
+                         choices = unique(data$weekday),
+                         selected = unique(data$weekday)),
+      
+      sliderInput("hour_filter",
+                  "Selecione a faixa de horas do dia:",
+                  min = 0, max = 23, value = c(0, 23), step = 1, 
+                  ticks = TRUE, animate = TRUE),
+      
+      
+      
+      checkboxGroupInput("complaint_filter",
+                         "Selecione os tipos de reclamação:",
+                         choices = unique(data$ComplaintType),
+                         selected = top_complaints_types),
+      
+      actionButton("update", "Atualizar Gráficos"),
+      width = 3
+    ),
+    
+    
+    mainPanel(
+      # Linha superior: Grafo e Gráfico de Barras
+      fluidRow(
+        column(width = 7, 
+               h4("Rede de Reclamações por ZIP Code", align = "center"),
+               visNetworkOutput("networkPlot", height = "400px")),
+        column(width = 5, 
+               plotOutput("barPlot", height = "400px"))
+      ),
+      
+      # Linha do meio: Gráfico de Evolução Temporal e Reclamações ao longo do dia
+      fluidRow(
+        column(width = 6, 
+               plotOutput("timeSeriesPlot", height = "400px")),
+        column(width = 6, 
+               plotOutput("hourlyPlot", height = "400px"))
+      ),
+      
+      # Linha inferior: Mapa
+      fluidRow(
+        column(width = 12, 
+               h4("Mapa de Reclamações por ZIP Code", align = "center"),
+               leafletOutput("mapPlot", height = "400px"))
+      )
+    )
+    
+  )
+)
+
+# Funções do Servidor (Server)
+server <- function(input, output, session) {
+  
+  # Filtrar reclamações por dia da semana
+  filtered_data_weekday <- reactive({
+    data %>%
+      filter(weekday %in% input$weekday_filter)
+  })
+  
+  # Filtrar reclamações por faixa de horas
+  filtered_data_by_hour <- reactive({
+    filtered_data_weekday() %>%
+      mutate(hour = hour(IssuedDate)) %>%
+      filter(hour >= input$hour_filter[1], hour <= input$hour_filter[2])
+  })
+  
+  # Filtrar arestas reativamente
+  filtered_edges <- reactive({
+    edges_filtered_with_count %>%
+      filter(type %in% input$complaint_filter, n >= input$threshold)
+  })
+  
+  # Filtrar nós reativamente
+  filtered_nodes <- reactive({
+    nodes %>%
+      filter(id %in% c(filtered_edges()$from, filtered_edges()$to))
+  })
+  
+  # Filtrar reclamações por tipo e hora
+  filtered_data <- reactive({
+    filtered_data_by_hour() %>%
+      filter(ComplaintType %in% input$complaint_filter)
+  })
+  
+  # Filtrar reclamações por ZIP Code selecionado e tipo de reclamação
+  filtered_complaints_by_zip <- reactive({
+    selected_zip_codes <- input$networkPlot_selected
+    if (is.null(selected_zip_codes) || length(selected_zip_codes) == 0) {
+      return(NULL)
+    }
+    filtered_data() %>%
+      filter(`Incident Zip` %in% selected_zip_codes) %>%
+      count(`Incident Zip`, ComplaintType) %>%
+      arrange(desc(n))
+  })
+  
+  # Renderizar o gráfico de série temporal
+  output$timeSeriesPlot <- renderPlot({
+    req(filtered_data_weekday())
+    
+    filtered_data_weekday() %>%
+      mutate(date = as.Date(IssuedDate)) %>%
+      count(date) %>%
+      ggplot(aes(x = date, y = n)) +
+      geom_line(color = "blue", size = 1) +
+      geom_point(color = "red", size = 2) +
+      labs(title = "Evolução Temporal das Reclamações",
+           x = "Data",
+           y = "Número de Reclamações") +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+        axis.text.y = element_text(size = 14),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        plot.title = element_text(size = 20)
+      )
+  })
+  
+  # Renderizar o grafo interativo
+  output$networkPlot <- renderVisNetwork({
+    req(filtered_edges())
+    
+    complaint_types <- unique(filtered_edges()$type)
+    complaint_colors <- RColorBrewer::brewer.pal(length(complaint_types), "Set3")
+    
+    edges <- filtered_edges() %>%
+      mutate(color = sapply(type, function(x) {
+        complaint_colors[which(complaint_types == x)]
+      })) %>%
+      select(from, to, color)
+    
+    nodes <- filtered_nodes() %>%
+      mutate(label = id, size = 10)
+    
+    visNetwork(nodes, edges) %>%
+      visEdges(color = list(color = edges$color)) %>%
+      visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+      visLayout(randomSeed = 123) %>%
+      visPhysics(stabilization = TRUE) %>%
+      visInteraction(dragNodes = TRUE, dragView = TRUE) %>%
+      visEvents(select = "function(nodes) {
+        Shiny.setInputValue('networkPlot_selected', nodes.nodes);
+      }")
+  })
+  
+  # Renderizar o gráfico de barras reativo para frequências por ZIP Code
+  output$barPlot <- renderPlot({
+    req(filtered_complaints_by_zip())
+    
+    # Filtrar as reclamações por ZIP Code selecionado
+    filtered_data <- filtered_complaints_by_zip()
+    
+    # Criar o gráfico de barras com várias barras por ComplaintType
+    filtered_data %>%
+      ggplot(aes(x = reorder(ComplaintType, -n), y = n, fill = ComplaintType)) +
+      geom_bar(stat = "identity", show.legend = FALSE) +  # Remove a legenda para clareza
+      labs(title = paste("Frequência de Reclamações no ZIP Code:", input$networkPlot_selected), 
+           x = "Tipo de Reclamação", 
+           y = "Frequência") +
+      scale_fill_brewer(palette = "Set3") +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 14),   # Ajusta o texto do eixo X
+        axis.text.y = element_text(hjust = 1, size = 14), 
+        axis.title.x = element_text(size = 16),  # Aumenta o título do eixo X
+        axis.title.y = element_text(size = 16),  # Aumenta o título do eixo Y
+        plot.title = element_text(size = 20),    # Aumenta o título do gráfico
+        legend.position = "none"                 # Esconde a legenda (opcional)
+      )
+  })
+  
+  
+  # Renderizar o gráfico de horas do dia
+  output$hourlyPlot <- renderPlot({
+    req(filtered_data())
+    
+    filtered_data() %>%
+      mutate(hour = hour(IssuedDate)) %>%
+      count(hour) %>%
+      ggplot(aes(x = hour, y = n)) +
+      geom_line(color = "blue", size = 1) +
+      geom_point(color = "red", size = 2) +
+      labs(title = "Reclamações ao Longo do Dia", 
+           x = "Hora do Dia", 
+           y = "Número de Reclamações") +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(size = 14),
+        axis.text.y = element_text(size = 14),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        plot.title = element_text(size = 20)
+      )
+  })
+  
+  # Renderizar o mapa
+  output$mapPlot <- renderLeaflet({
+    req(filtered_nodes())
+    
+    nodes_with_coords <- zip_locations %>%
+      filter(id %in% filtered_nodes()$id)
+    
+    leaflet(data = nodes_with_coords) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        ~lng, ~lat,
+        label = ~id,
+        radius = 5,
+        color = "blue",
+        fillColor = "blue",
+        fillOpacity = 0.6,
+        popup = ~paste("ZIP Code:", id)
+      )
+  })
+}
+
+# Rodar a aplicação Shiny
+shinyApp(ui = ui, server = server)
+
+
+
+
