@@ -21,6 +21,7 @@ library(tidygraph)
 library(visNetwork)  # Pacote para grafos interativos
 library(httr)
 library(jsonlite)
+library(lubridate)
 
 
 # Reading a local file
