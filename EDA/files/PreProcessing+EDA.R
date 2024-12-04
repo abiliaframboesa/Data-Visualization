@@ -1096,3 +1096,141 @@ server <- function(input, output, session) {
 shinyApp(ui = ui, server = server)
 
 
+
+
+
+
+
+
+
+
+
+# ------------------------------------------------ Dashboard Ana Luisa --------------------------------------------------
+
+
+# Load necessary libraries
+library(shiny)
+library(ggplot2)
+library(dplyr)
+
+# Define the UI
+ui <- fluidPage(
+  titlePanel("NYC Complaints: Heatmap and Time Series"),
+  sidebarLayout(
+    sidebarPanel(
+      checkboxGroupInput(
+        inputId = "complaint_type",
+        label = "Select Complaint Type(s):",
+        choices = NULL # Dynamically populated in server
+      ),
+      uiOutput("dynamic_descriptor_inputs")  # Dynamic UI for Descriptors
+    ),
+    mainPanel(
+      fluidRow(
+        column(6, plotOutput("heatmap")),  # Heatmap on the left
+        column(6, plotOutput("time_series")) # Time series on the right
+      )
+    )
+  )
+)
+
+# Define the server logic
+server <- function(input, output, session) {
+  
+
+  # Extract the hour from IssuedDate and convert IssuedDate to Date format
+  data$hour <- format(data$IssuedDate, "%H")
+  data$IssuedDate <- as.Date(data$IssuedDate)
+  
+  # Populate ComplaintType checkboxGroupInput options
+  updateCheckboxGroupInput(session, "complaint_type", choices = unique(data$ComplaintType))
+  
+  # Dynamic UI for Descriptor checkboxes
+  output$dynamic_descriptor_inputs <- renderUI({
+    req(input$complaint_type)  # Ensure at least one ComplaintType is selected
+    
+    # Generate a checkboxGroupInput for each selected ComplaintType
+    lapply(input$complaint_type, function(type) {
+      descriptors <- data %>%
+        filter(ComplaintType == type) %>%
+        pull(Descriptor) %>%
+        unique()
+      
+      checkboxGroupInput(
+        inputId = paste0("descriptor_", gsub(" ", "_", type)), # Unique ID for each ComplaintType
+        label = paste("Select Descriptors for", type, ":"),
+        choices = descriptors
+      )
+    })
+  })
+  
+  # Helper to get selected descriptors
+  selected_descriptors <- reactive({
+    req(input$complaint_type)  # Ensure at least one ComplaintType is selected
+    
+    # Collect all selected descriptors from dynamic inputs
+    lapply(input$complaint_type, function(type) {
+      input[[paste0("descriptor_", gsub(" ", "_", type))]]  # Access dynamic input by ID
+    }) %>%
+      unlist(use.names = FALSE)  # Flatten into a single vector
+  })
+  
+  # Render the heatmap
+  output$heatmap <- renderPlot({
+    req(input$complaint_type)  # Ensure at least one ComplaintType is selected
+    req(selected_descriptors())  # Ensure at least one Descriptor is selected
+    
+    # Filter data by selected ComplaintType(s) and Descriptors
+    filtered_data <- data %>%
+      filter(ComplaintType %in% input$complaint_type, Descriptor %in% selected_descriptors())
+    
+    # Count complaints by weekday and hour
+    complaint_counts <- filtered_data %>%
+      group_by(weekday, hour) %>%
+      summarise(count = n(), .groups = "drop")
+    
+    # Convert weekday to an ordered factor
+    complaint_counts$weekday <- factor(complaint_counts$weekday, 
+                                       levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+    
+    # Plot the heatmap
+    ggplot(complaint_counts, aes(x = hour, y = weekday, fill = count)) +
+      geom_tile(color = "white") +
+      scale_fill_gradient(low = "lightblue", high = "darkblue") +
+      labs(title = paste("Heatmap for", paste(input$complaint_type, collapse = ", ")),
+           x = "Hour of the Day",
+           y = "Day of the Week",
+           fill = "Complaint Count") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  # Render the time series plot
+  output$time_series <- renderPlot({
+    req(input$complaint_type)  # Ensure at least one ComplaintType is selected
+    req(selected_descriptors())  # Ensure at least one Descriptor is selected
+    
+    # Filter data by selected ComplaintType(s) and Descriptors
+    filtered_data <- data %>%
+      filter(ComplaintType %in% input$complaint_type, Descriptor %in% selected_descriptors())
+    
+    # Aggregate complaints by IssuedDate and ComplaintType
+    time_series_data <- filtered_data %>%
+      group_by(IssuedDate, ComplaintType) %>%
+      summarise(Count = n(), .groups = "drop")
+    
+    # Plot the time series with a line for each ComplaintType
+    ggplot(time_series_data, aes(x = IssuedDate, y = Count, color = ComplaintType)) +
+      geom_line() +
+      geom_point() +
+      labs(title = paste("Time Series for", paste(input$complaint_type, collapse = ", ")),
+           x = "Date",
+           y = "Number of Complaints",
+           color = "Complaint Type") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
