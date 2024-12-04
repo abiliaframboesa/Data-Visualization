@@ -1234,3 +1234,187 @@ server <- function(input, output, session) {
 
 # Run the application
 shinyApp(ui = ui, server = server)
+
+
+
+
+
+
+
+
+#----------------------------------------------- Ana Luisa final? --------------
+
+# Load necessary libraries
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(leaflet)
+
+# Define the UI
+ui <- fluidPage(
+  titlePanel("NYC Complaints: Heatmap, Time Series, and Map"),
+  sidebarLayout(
+    sidebarPanel(
+      checkboxGroupInput(
+        inputId = "complaint_type",
+        label = "Select Complaint Type(s):",
+        choices = NULL # Dynamically populated in server
+      ),
+      uiOutput("dynamic_descriptor_inputs"),  # Dynamic UI for Descriptors
+      sliderInput(
+        inputId = "time_range",
+        label = "Select Date Range:",
+        min = as.Date("2016-09-01"),  # Adjust as per your data
+        max = as.Date("2024-09-30"),  # Adjust as per your data
+        value = c(as.Date("2016-09-01"), as.Date("2024-09-30")),
+        timeFormat = "%Y-%m-%d"
+      )
+    ),
+    mainPanel(
+      fluidRow(
+        column(6, plotOutput("heatmap")),  # Heatmap on the left
+        column(6, plotOutput("time_series")) # Time series on the right
+      ),
+      leafletOutput("map", height = "400px")  # Map below the plots
+    )
+  )
+)
+
+# Define the server logic
+server <- function(input, output, session) {
+  
+  # Ensure IssuedDate is in Date format and extract the hour
+  data$IssuedDate <- as.POSIXct(data$IssuedDate)  # If IssuedDate is in datetime format
+  data$hour <- format(data$IssuedDate, "%H")
+  
+  # Populate ComplaintType checkboxGroupInput options
+  updateCheckboxGroupInput(session, "complaint_type", choices = unique(data$ComplaintType))
+  
+  # Dynamic UI for Descriptor checkboxes
+  output$dynamic_descriptor_inputs <- renderUI({
+    req(input$complaint_type)  # Ensure at least one ComplaintType is selected
+    
+    # Generate a checkboxGroupInput for each selected ComplaintType
+    lapply(input$complaint_type, function(type) {
+      descriptors <- data %>%
+        filter(ComplaintType == type) %>%
+        pull(Descriptor) %>%
+        unique()
+      
+      checkboxGroupInput(
+        inputId = paste0("descriptor_", gsub(" ", "_", type)), # Unique ID for each ComplaintType
+        label = paste("Select Descriptors for", type, ":"),
+        choices = descriptors
+      )
+    })
+  })
+  
+  # Helper to get selected descriptors
+  selected_descriptors <- reactive({
+    req(input$complaint_type)  # Ensure at least one ComplaintType is selected
+    
+    # Collect all selected descriptors from dynamic inputs
+    lapply(input$complaint_type, function(type) {
+      input[[paste0("descriptor_", gsub(" ", "_", type))]]  # Access dynamic input by ID
+    }) %>%
+      unlist(use.names = FALSE)  # Flatten into a single vector
+  })
+  
+  # Filtered data based on inputs
+  filtered_data <- reactive({
+    req(input$complaint_type, selected_descriptors(), input$time_range)
+    
+    data %>%
+      filter(
+        ComplaintType %in% input$complaint_type,
+        Descriptor %in% selected_descriptors(),
+        IssuedDate >= input$time_range[1],
+        IssuedDate <= input$time_range[2]
+      )
+  })
+  
+  # Render the heatmap
+  output$heatmap <- renderPlot({
+    req(filtered_data())
+    
+    # Count complaints by weekday and hour
+    complaint_counts <- filtered_data() %>%
+      group_by(weekday, hour) %>%
+      summarise(count = n(), .groups = "drop")
+    
+    # Convert weekday to an ordered factor
+    complaint_counts$weekday <- factor(complaint_counts$weekday, 
+                                       levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+    
+    # Plot the heatmap
+    ggplot(complaint_counts, aes(x = hour, y = weekday, fill = count)) +
+      geom_tile(color = "white") +
+      scale_fill_gradient(low = "lightblue", high = "darkblue") +
+      labs(title = paste("Heatmap for", paste(input$complaint_type, collapse = ", ")),
+           x = "Hour of the Day",
+           y = "Day of the Week",
+           fill = "Complaint Count") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  # Render the time series plot
+  output$time_series <- renderPlot({
+    req(filtered_data())
+    
+    # Aggregate complaints by IssuedDate and ComplaintType
+    time_series_data <- filtered_data() %>%
+      group_by(IssuedDate, ComplaintType) %>%
+      summarise(Count = n(), .groups = "drop")
+    
+    # Plot the time series with a line for each ComplaintType
+    ggplot(time_series_data, aes(x = IssuedDate, y = Count, color = ComplaintType)) +
+      geom_line() +
+      geom_point() +
+      labs(title = paste("Time Series for", paste(input$complaint_type, collapse = ", ")),
+           x = "Date",
+           y = "Number of Complaints",
+           color = "Complaint Type") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  # Render the map
+  output$map <- renderLeaflet({
+    req(filtered_data())
+    
+    # Generate a palette of colors for the selected complaint types
+    complaint_types <- unique(filtered_data()$ComplaintType)
+    color_palette <- colorFactor(
+      palette = "Set1",  # Choose a color palette
+      domain = complaint_types
+    )
+    
+    leaflet(filtered_data()) %>%
+      addTiles() %>%
+      setView(lng = -73.9665, lat = 40.7812, zoom = 11) %>%
+      addCircleMarkers(
+        ~Longitude, ~Latitude,
+        radius = 3,
+        color = ~color_palette(ComplaintType),  # Assign color based on ComplaintType
+        stroke = FALSE,
+        fillOpacity = 0.7,
+        popup = ~paste("Type:", ComplaintType, "<br>",
+                       "Descriptor:", Descriptor, "<br>",
+                       "Date:", IssuedDate)
+      ) %>%
+      addLegend(
+        "bottomright", 
+        pal = color_palette, 
+        values = ~ComplaintType,
+        title = "Complaint Type",
+        opacity = 0.7
+      )
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+
+
+
