@@ -1418,3 +1418,228 @@ shinyApp(ui = ui, server = server)
 
 
 
+
+
+
+
+# ----------------------- GRAFO + MAPA COM ZIP CODES, FREQUENCIA DE COMPLAINTS POR COMPLAINTTYPE E POR BOROUGH E MAPA COM FREQUENCIA DE COMPLAINTS
+
+
+library(shiny)
+library(dplyr)
+library(visNetwork)
+library(RColorBrewer)
+library(leaflet)
+library(ggplot2)
+
+# Preparar os nodes (nós)
+nodes <- data %>%
+  filter(!is.na(`Incident Zip`) & `Incident Zip` != "") %>%
+  distinct(`Incident Zip`, Borough, Latitude, Longitude) %>%
+  rename(id = `Incident Zip`)
+
+# Preparar os edges (arestas)
+edges <- data %>%
+  filter(!is.na(`Incident Zip`) & `Incident Zip` != "") %>%
+  group_by(ComplaintType) %>%
+  filter(n_distinct(`Incident Zip`) > 1) %>%
+  reframe(pairs = list(combn(unique(`Incident Zip`), 2, simplify = FALSE))) %>%
+  filter(lengths(pairs) > 0) %>%
+  unnest(pairs) %>%
+  transmute(from = map_chr(pairs, 1),
+            to = map_chr(pairs, 2),
+            type = ComplaintType)
+
+edges_count <- edges %>%
+  count(from, to) %>%
+  filter(n >= 50)
+
+edges_filtered_with_count <- edges %>%
+  left_join(edges_count, by = c("from", "to")) %>%
+  filter(!is.na(n))
+
+# UI
+ui <- fluidPage(
+  titlePanel("Grafo e Mapa de Reclamações por ZIP Code"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("threshold",
+                  "Threshold mínimo de reclamações:",
+                  min = 1, max = 100, value = 50),
+      
+      checkboxGroupInput("complaint_filter",
+                         "Selecione os tipos de reclamação:",
+                         choices = unique(data$ComplaintType),
+                         selected = head(unique(data$ComplaintType), 2)),
+      
+      checkboxGroupInput("borough_filter",
+                         "Selecione os Boroughs:",
+                         choices = unique(data$Borough),
+                         selected = unique(data$Borough)),
+      
+      actionButton("update", "Atualizar Grafo e Mapa"),
+      width = 3
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Grafo e Mapa", 
+                 fluidRow(
+                   column(width = 12, visNetworkOutput("networkPlot", height = "600px"))
+                 ),
+                 fluidRow(
+                   column(width = 12, leafletOutput("mapPlot", height = "400px"))
+                 )
+        ),
+        
+        tabPanel("Análise Adicional",
+                 h3("Distribuição das Reclamações por Tipo e Borough"),
+                 plotOutput("stackedBarPlot", height = "400px"),
+                 h3("Mapa por Tipo de Reclamação"),
+                 leafletOutput("complaintMap", height = "400px")
+        )
+      )
+    )
+  )
+)
+
+# Server
+server <- function(input, output, session) {
+  
+  # Criar o mapa de cores para os Boroughs
+  borough_colors <- reactive({
+    boroughs <- unique(nodes$Borough)
+    colors <- RColorBrewer::brewer.pal(min(length(boroughs), 8), "Set3")
+    setNames(colors, boroughs)
+  })
+  
+  # Cores para os Complaint Types
+  complaint_colors <- reactive({
+    types <- unique(edges_filtered_with_count$type)
+    num_types <- length(types)
+    colors <- RColorBrewer::brewer.pal(max(3, min(num_types, 12)), "Dark2")
+    if (num_types > length(colors)) {
+      colors <- rep(colors, length.out = num_types)
+    }
+    setNames(colors, types)
+  })
+  
+  # Filtrar arestas reativamente
+  filtered_edges <- reactive({
+    edges_filtered_with_count %>%
+      filter(type %in% input$complaint_filter, n >= input$threshold)
+  })
+  
+  # Filtrar nós reativamente
+  filtered_nodes <- reactive({
+    nodes %>%
+      filter(id %in% c(filtered_edges()$from, filtered_edges()$to)) %>%
+      filter(Borough %in% input$borough_filter) %>%
+      distinct(id, .keep_all = TRUE) # Garantir IDs únicos
+  })
+  
+  # Renderizar o grafo interativo
+  output$networkPlot <- renderVisNetwork({
+    req(filtered_edges())
+    req(filtered_nodes())
+    
+    color_map <- borough_colors()
+    
+    nodes <- filtered_nodes() %>%
+      mutate(color = color_map[Borough],
+             label = id, size = 10)
+    
+    edges <- filtered_edges() %>%
+      filter(from %in% nodes$id & to %in% nodes$id) %>%
+      mutate(color = sapply(type, function(x) complaint_colors()[[x]]))
+    
+    visNetwork(nodes, edges) %>%
+      visNodes(color = list(background = nodes$color)) %>%
+      visEdges(color = list(color = edges$color)) %>%
+      visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+      visLayout(randomSeed = 123) %>%
+      visPhysics(enabled = FALSE) %>%
+      visInteraction(dragNodes = TRUE, dragView = TRUE)
+  })
+  
+  # Renderizar o mapa de ZIP Codes
+  output$mapPlot <- renderLeaflet({
+    req(filtered_nodes())
+    req(all(c("Latitude", "Longitude") %in% names(filtered_nodes())))
+    
+    map_nodes <- filtered_nodes() %>%
+      filter(!is.na(Latitude) & !is.na(Longitude))
+    
+    color_map <- borough_colors()
+    
+    leaflet(data = map_nodes) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        ~Longitude, ~Latitude,
+        label = ~paste("ZIP:", id, "<br>Borough:", Borough),
+        radius = 5,
+        color = ~color_map[Borough],
+        fillColor = ~color_map[Borough],
+        fillOpacity = 0.8,
+        popup = ~paste0("<strong>ZIP Code:</strong> ", id, 
+                        "<br><strong>Borough:</strong> ", Borough)
+      )
+  })
+  
+  # Renderizar gráfico de barras empilhadas
+  output$stackedBarPlot <- renderPlot({
+    data %>%
+      filter(ComplaintType %in% input$complaint_filter,
+             Borough %in% input$borough_filter) %>%
+      count(ComplaintType, Borough) %>%
+      ggplot(aes(x = ComplaintType, y = n, fill = Borough)) +
+      geom_bar(stat = "identity", position = "stack") +
+      theme_minimal() +
+      labs(title = "Distribuição das Reclamações por Tipo e Borough",
+           x = "Tipo de Reclamação",
+           y = "Número de Reclamações") +
+      scale_fill_manual(values = borough_colors()) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  # Renderizar o mapa dos Complaint Types
+  output$complaintMap <- renderLeaflet({
+    req(data)
+    
+    filtered_data <- data %>%
+      filter(ComplaintType %in% input$complaint_filter,
+             Borough %in% input$borough_filter,
+             !is.na(Latitude), !is.na(Longitude)) %>%
+      mutate(ComplaintType = as.factor(trimws(ComplaintType))) # Padroniza os valores
+    
+    complaint_types <- levels(filtered_data$ComplaintType)
+    color_palette <- RColorBrewer::brewer.pal(min(12, length(complaint_types)), "Set1")
+    color_map <- colorFactor(palette = color_palette, domain = complaint_types)
+    
+    leaflet(data = filtered_data) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        ~Longitude, ~Latitude,
+        color = ~color_map(ComplaintType),  # Aplica as cores dinamicamente
+        fillColor = ~color_map(ComplaintType),
+        fillOpacity = 0.8,
+        radius = 5,
+        label = ~paste("Tipo:", ComplaintType, "<br>Borough:", Borough),
+        popup = ~paste0("<strong>Tipo de Reclamação:</strong> ", ComplaintType,
+                        "<br><strong>Borough:</strong> ", Borough,
+                        "<br><strong>Coordenadas:</strong> ", Latitude, ", ", Longitude)
+      ) %>%
+      addLegend(
+        "bottomright",
+        pal = color_map,
+        values = ~ComplaintType,
+        title = "Tipos de Reclamação",
+        opacity = 1
+      )
+  })
+}
+
+# Rodar a aplicação Shiny
+shinyApp(ui = ui, server = server)
+
