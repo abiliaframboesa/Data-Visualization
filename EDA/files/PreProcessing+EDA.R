@@ -1423,14 +1423,14 @@ shinyApp(ui = ui, server = server)
 
 
 # ----------------------- GRAFO + MAPA COM ZIP CODES, FREQUENCIA DE COMPLAINTS POR COMPLAINTTYPE E POR BOROUGH E MAPA COM FREQUENCIA DE COMPLAINTS
-
-
+# ----------------------- TAMBEM JA TEM HEATMAP E PLOT DE FREQUENCIA DE COMPLAINTS 
 library(shiny)
 library(dplyr)
 library(visNetwork)
 library(RColorBrewer)
 library(leaflet)
 library(ggplot2)
+library(lubridate)
 
 # Preparar os nodes (nós)
 nodes <- data %>%
@@ -1460,7 +1460,7 @@ edges_filtered_with_count <- edges %>%
 
 # UI
 ui <- fluidPage(
-  titlePanel("Grafo e Mapa de Reclamações por ZIP Code"),
+  titlePanel("Visualização de Dados Grupo 2"),
   
   sidebarLayout(
     sidebarPanel(
@@ -1476,7 +1476,7 @@ ui <- fluidPage(
       checkboxGroupInput("borough_filter",
                          "Selecione os Boroughs:",
                          choices = unique(data$Borough),
-                         selected = unique(data$Borough)),
+                         selected = head(unique(data$Borough), 5)),
       
       actionButton("update", "Atualizar Grafo e Mapa"),
       width = 3
@@ -1484,7 +1484,7 @@ ui <- fluidPage(
     
     mainPanel(
       tabsetPanel(
-        tabPanel("Grafo e Mapa", 
+        tabPanel("Grafo e Mapa dos Zip Codes", 
                  fluidRow(
                    column(width = 12, visNetworkOutput("networkPlot", height = "600px"))
                  ),
@@ -1493,11 +1493,28 @@ ui <- fluidPage(
                  )
         ),
         
-        tabPanel("Análise Adicional",
+        tabPanel("Localização das Reclamações",
                  h3("Distribuição das Reclamações por Tipo e Borough"),
                  plotOutput("stackedBarPlot", height = "400px"),
                  h3("Mapa por Tipo de Reclamação"),
                  leafletOutput("complaintMap", height = "400px")
+        ),
+        
+        # Nova aba com múltiplos checkboxGroupInputs
+        tabPanel("Heatmap e Timeseries plot",
+                 sidebarLayout(
+                   sidebarPanel(
+                     uiOutput("descriptor_checkboxes") # Aqui geramos os inputs dinamicamente
+                   ),
+                   mainPanel(
+                     h3("Conteúdo Filtrado"),
+                     tableOutput("descriptor_table"),
+                     h3("Heatmap de Reclamações"),
+                     plotOutput("heatmap_plot"),
+                     h3("Evolução Temporal"),
+                     plotOutput("time_series_plot")
+                   )
+                 )
         )
       )
     )
@@ -1638,8 +1655,90 @@ server <- function(input, output, session) {
         opacity = 1
       )
   })
+  
+  # Gerar dinamicamente checkboxGroupInputs para cada ComplaintType selecionado
+  output$descriptor_checkboxes <- renderUI({
+    req(input$complaint_filter)
+    selected_complaints <- input$complaint_filter
+    
+    lapply(selected_complaints, function(complaint) {
+      descriptors <- data %>%
+        filter(ComplaintType == complaint) %>%
+        distinct(Descriptor) %>%
+        pull(Descriptor)
+      
+      checkboxGroupInput(inputId = paste0("descriptor_", complaint),
+                         label = paste("Descriptors para", complaint, ":"),
+                         choices = descriptors,
+                         selected = descriptors[1:min(length(descriptors), 3)])
+    })
+  })
+  
+  # Filtrar os dados com base nos Descriptors selecionados
+  filtered_data <- reactive({
+    req(input$complaint_filter)
+    filters <- lapply(input$complaint_filter, function(complaint) {
+      input[[paste0("descriptor_", complaint)]]
+    })
+    
+    descriptors_selected <- unlist(filters)
+    
+    data %>%
+      filter(ComplaintType %in% input$complaint_filter,
+             Descriptor %in% descriptors_selected)
+  })
+  
+  # Gerar o heatmap dependente dos Boroughs selecionados
+  output$heatmap_plot <- renderPlot({
+    req(filtered_data())
+    req(input$borough_filter)
+    
+    filtered_borough_data <- filtered_data() %>%
+      filter(Borough %in% input$borough_filter)
+    
+    if (nrow(filtered_borough_data) == 0) return(NULL)
+    
+    complaint_counts <- filtered_borough_data %>%
+      mutate(hour = hour(IssuedDate),
+             weekday = wday(IssuedDate, label = TRUE)) %>%
+      count(weekday, hour)
+    
+    complaint_counts$weekday <- factor(complaint_counts$weekday,
+                                       levels = c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"))
+    
+    ggplot(complaint_counts, aes(x = hour, y = weekday, fill = n)) +
+      geom_tile(color = "white") +
+      scale_fill_gradient(low = "lightblue", high = "darkblue") +
+      labs(title = "Heatmap de Reclamações por Hora e Dia da Semana",
+           x = "Hora do Dia", y = "Dia da Semana", fill = "Número de Reclamações") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  # Gerar o time series plot
+  output$time_series_plot <- renderPlot({
+    req(filtered_data())
+    
+    time_series_data <- filtered_data() %>%
+      mutate(Date = as.Date(IssuedDate)) %>%
+      count(Date)
+    
+    ggplot(time_series_data, aes(x = Date, y = n)) +
+      geom_line(color = "blue") +
+      geom_point(color = "darkblue") +
+      scale_x_date(
+        date_breaks = "1 day",  # Define rótulos para cada dia
+        date_labels = "%d-%b"  # Formato: Dia-Mês (e.g., 01-Sep)
+      ) +
+      labs(title = "Evolução do Número de Reclamações ao Longo do Tempo",
+           x = "Data", y = "Número de Reclamações") +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.minor = element_blank()  # Remove grids menores do gráfico
+      )
+  })
 }
 
 # Rodar a aplicação Shiny
 shinyApp(ui = ui, server = server)
-
