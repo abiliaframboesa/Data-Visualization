@@ -1623,25 +1623,23 @@ server <- function(input, output, session) {
   
   # Renderizar o mapa dos Complaint Types
   output$complaintMap <- renderLeaflet({
-    req(data, garagelots) # Ensure both datasets are available
+    req(data, garagelots)
     
-    # Filter complaint data based on user input
     filtered_data <- data %>%
       filter(ComplaintType %in% input$complaint_filter,
              Borough %in% input$borough_filter,
              !is.na(Latitude), !is.na(Longitude)) %>%
-      mutate(ComplaintType = as.factor(trimws(ComplaintType))) # Standardize complaint type
+      mutate(ComplaintType = as.factor(trimws(ComplaintType)))
     
     complaint_types <- levels(filtered_data$ComplaintType)
     color_palette <- RColorBrewer::brewer.pal(min(12, length(complaint_types)), "Set1")
     color_map <- colorFactor(palette = color_palette, domain = complaint_types)
-    
-    # Base map showing complaints
+  
     map <- leaflet(data = filtered_data) %>%
       addTiles() %>%
       addCircleMarkers(
         ~Longitude, ~Latitude,
-        color = ~color_map(ComplaintType),  # Color dynamically based on ComplaintType
+        color = ~color_map(ComplaintType),
         fillColor = ~color_map(ComplaintType),
         fillOpacity = 0.8,
         radius = 5,
@@ -1670,12 +1668,12 @@ server <- function(input, output, session) {
             "Business:", Business.Name
           ),
           radius = 5,
-          color = "orange", # Different color for garage lots
+          color = "orange",
           fillOpacity = 0.7
         )
     }
     
-    map # Return the updated map
+    map
   })
 
   
