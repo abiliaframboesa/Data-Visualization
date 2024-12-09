@@ -1424,7 +1424,6 @@ shinyApp(ui = ui, server = server)
 
 # ----------------------- GRAFO + MAPA COM ZIP CODES, FREQUENCIA DE COMPLAINTS POR COMPLAINTTYPE E POR BOROUGH E MAPA COM FREQUENCIA DE COMPLAINTS
 # ----------------------- TAMBEM JA TEM HEATMAP E PLOT DE FREQUENCIA DE COMPLAINTS 
-
 library(shiny)
 library(dplyr)
 library(visNetwork)
@@ -1500,15 +1499,6 @@ ui <- fluidPage(
     
     mainPanel(
       tabsetPanel(
-        tabPanel("Grafo e Mapa dos Zip Codes", 
-                 fluidRow(
-                   column(width = 12, visNetworkOutput("networkPlot", height = "600px"))
-                 ),
-                 fluidRow(
-                   column(width = 12, leafletOutput("mapPlot", height = "400px"))
-                 )
-        ),
-        
         tabPanel("Localização das Reclamações",
                  h3("Distribuição das Reclamações por Tipo e Borough"),
                  plotOutput("stackedBarPlot", height = "400px"),
@@ -1520,8 +1510,6 @@ ui <- fluidPage(
                  )
         ),
         
-        
-        # Nova aba com múltiplos checkboxGroupInputs
         tabPanel("Heatmap e Timeseries plot",
                  sidebarLayout(
                    sidebarPanel(
@@ -1535,6 +1523,15 @@ ui <- fluidPage(
                      h3("Evolução Temporal"),
                      plotOutput("time_series_plot")
                    )
+                 )
+        ),
+        
+        tabPanel("Grafo e Mapa dos Zip Codes", 
+                 fluidRow(
+                   column(width = 12, visNetworkOutput("networkPlot", height = "600px"))
+                 ),
+                 fluidRow(
+                   column(width = 12, leafletOutput("mapPlot", height = "400px"))
                  )
         )
       )
