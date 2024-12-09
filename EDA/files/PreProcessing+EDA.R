@@ -1424,6 +1424,7 @@ shinyApp(ui = ui, server = server)
 
 # ----------------------- GRAFO + MAPA COM ZIP CODES, FREQUENCIA DE COMPLAINTS POR COMPLAINTTYPE E POR BOROUGH E MAPA COM FREQUENCIA DE COMPLAINTS
 # ----------------------- TAMBEM JA TEM HEATMAP E PLOT DE FREQUENCIA DE COMPLAINTS 
+
 library(shiny)
 library(dplyr)
 library(visNetwork)
@@ -1431,6 +1432,10 @@ library(RColorBrewer)
 library(leaflet)
 library(ggplot2)
 library(lubridate)
+
+
+#Parking Lots dataset
+garagelots <- read.csv("Issued_Licenses_bn.csv")
 
 # Preparar os nodes (nós)
 nodes <- data %>%
@@ -1468,15 +1473,26 @@ ui <- fluidPage(
                   "Threshold mínimo de reclamações:",
                   min = 1, max = 100, value = 50),
       
-      checkboxGroupInput("complaint_filter",
-                         "Selecione os tipos de reclamação:",
-                         choices = unique(data$ComplaintType),
-                         selected = head(unique(data$ComplaintType), 2)),
-      
       checkboxGroupInput("borough_filter",
                          "Selecione os Boroughs:",
-                         choices = unique(data$Borough),
-                         selected = head(unique(data$Borough), 5)),
+                         choices = c("MANHATTAN", "BROOKLYN","STATEN ISLAND","QUEENS","BRONX"),
+                         selected = c("MANHATTAN", "BROOKLYN","STATEN ISLAND","QUEENS","BRONX")),
+      
+      checkboxGroupInput("complaint_filter",
+                         "Selecione os tipos de reclamação:",
+                         choices = c("Noise - Residential", "Illegal Parking", "Blocked Driveway", 
+                                     "Noise - Street/Sidewalk", "UNSANITARY CONDITION", 
+                                     "Street Condition", "Street Light Condition", "Noise", 
+                                     "Homeless Person Assistance", "Water System", 
+                                     "General Construction/Plumbing", "Noise - Commercial", 
+                                     "Sanitation Condition", "Dirty Conditions", 
+                                     "Rodent", "Derelict Vehicle", "Derelict Vehicles", 
+                                     "Sidewalk Condition", 
+                                     "Building/Use", "Noise - Vehicle", "WATER LEAK", "Sewer", 
+                                     "Missed Collection (All Materials)", "ELECTRIC", 
+                                     "Taxi Complaint", "Homeless Encampment", "Traffic", "Housing Options"),
+                         selected = c("Noise - Residential", "Illegal Parking")),
+      
       
       actionButton("update", "Atualizar Grafo e Mapa"),
       width = 3
@@ -1497,8 +1513,13 @@ ui <- fluidPage(
                  h3("Distribuição das Reclamações por Tipo e Borough"),
                  plotOutput("stackedBarPlot", height = "400px"),
                  h3("Mapa por Tipo de Reclamação"),
-                 leafletOutput("complaintMap", height = "400px")
+                 div(
+                   style = "text-align: center;",  # Center the map and checkbox
+                   leafletOutput("complaintMap", height = "400px"),  # Larger map
+                   checkboxInput("showMap", "Show Garage and Parking Lots 🟠", value = FALSE)
+                 )
         ),
+        
         
         # Nova aba com múltiplos checkboxGroupInputs
         tabPanel("Heatmap e Timeseries plot",
@@ -1617,28 +1638,28 @@ server <- function(input, output, session) {
            x = "Tipo de Reclamação",
            y = "Número de Reclamações") +
       scale_fill_manual(values = borough_colors()) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 11))
   })
   
   # Renderizar o mapa dos Complaint Types
   output$complaintMap <- renderLeaflet({
-    req(data)
+    req(data, garagelots)
     
     filtered_data <- data %>%
       filter(ComplaintType %in% input$complaint_filter,
              Borough %in% input$borough_filter,
              !is.na(Latitude), !is.na(Longitude)) %>%
-      mutate(ComplaintType = as.factor(trimws(ComplaintType))) # Padroniza os valores
+      mutate(ComplaintType = as.factor(trimws(ComplaintType)))
     
     complaint_types <- levels(filtered_data$ComplaintType)
     color_palette <- RColorBrewer::brewer.pal(min(12, length(complaint_types)), "Set1")
     color_map <- colorFactor(palette = color_palette, domain = complaint_types)
     
-    leaflet(data = filtered_data) %>%
+    map <- leaflet(data = filtered_data) %>%
       addTiles() %>%
       addCircleMarkers(
         ~Longitude, ~Latitude,
-        color = ~color_map(ComplaintType),  # Aplica as cores dinamicamente
+        color = ~color_map(ComplaintType),
         fillColor = ~color_map(ComplaintType),
         fillOpacity = 0.8,
         radius = 5,
@@ -1654,7 +1675,27 @@ server <- function(input, output, session) {
         title = "Tipos de Reclamação",
         opacity = 1
       )
+    
+    # Conditionally add garage lot markers if the checkbox is checked
+    if(input$showMap) {
+      map <- map %>%
+        addCircleMarkers(
+          data = garagelots,
+          lng = ~Longitude,
+          lat = ~Latitude,
+          popup = ~paste(
+            "Borough:", Borough, "<br>",
+            "Business:", Business.Name
+          ),
+          radius = 5,
+          color = "orange",
+          fillOpacity = 0.7
+        )
+    }
+    
+    map
   })
+  
   
   # Gerar dinamicamente checkboxGroupInputs para cada ComplaintType selecionado
   output$descriptor_checkboxes <- renderUI({
@@ -1738,7 +1779,10 @@ server <- function(input, output, session) {
         panel.grid.minor = element_blank()  # Remove grids menores do gráfico
       )
   })
+  
 }
 
 # Rodar a aplicação Shiny
 shinyApp(ui = ui, server = server)
+
+
