@@ -25,9 +25,9 @@ library(lubridate)
 
 
 # Reading a local file
-data <- fread("C:/Users/dcssi/OneDrive/Ambiente de Trabalho/2ºano_Mestrado/VD/NYC_311_Data_20241009.csv")
-data <- fread("C:/Users/Ana Luísa/Desktop/Mestrado em Bioinformática e Biologia Computacional/2 ano/Visualização de Dados/Projeto/NYC_311_Data_20241009.csv")
-data <- fread("C:/Users/tomas/Downloads/NYC_311_Data_20241009.csv")
+#data <- fread("C:/Users/dcssi/OneDrive/Ambiente de Trabalho/2ºano_Mestrado/VD/NYC_311_Data_20241009.csv")
+#data <- fread("C:/Users/Ana Luísa/Desktop/Mestrado em Bioinformática e Biologia Computacional/2 ano/Visualização de Dados/Projeto/NYC_311_Data_20241009.csv")
+data <- fread(choose.files(), sep = ";")
 
 # ------------------------------------- Pre-processing ------------------------------------------
 
@@ -231,7 +231,8 @@ data <- data %>%
 
 View(data)
 
-
+#Parking Lots dataset
+garagelots <- read.csv("Issued_Licenses_bn.csv")
 
 # --------------------------------- EDA - Visualization plots -----------------------------------------------
 
@@ -390,7 +391,7 @@ heatmap_24h <- ggplot(complaint_counts, aes(x = hour, y = weekday, fill = count)
 
 # Print the plot
 print(heatmap_24h)
-ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_24h.png", plot = heatmap_24h, width = 6, height = 4, dpi = 300)
+#ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_24h.png", plot = heatmap_24h, width = 6, height = 4, dpi = 300)
 
 
 # ----- DE 3 EM 3 HORAS 
@@ -429,7 +430,7 @@ heatmap_3_3 <- ggplot(complaint_counts, aes(x = hour_group, y = weekday, fill = 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 print(heatmap_3_3)
-ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_3_3.png", plot = heatmap_3_3, width = 6, height = 4, dpi = 300)
+#ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_3_3.png", plot = heatmap_3_3, width = 6, height = 4, dpi = 300)
 
 
 #  ------------------- PIEPLOT OF COMPLAINT TYPES 
@@ -1100,11 +1101,6 @@ shinyApp(ui = ui, server = server)
 
 
 
-
-
-
-
-
 # ------------------------------------------------ Dashboard Ana Luisa --------------------------------------------------
 
 
@@ -1417,7 +1413,7 @@ server <- function(input, output, session) {
 shinyApp(ui = ui, server = server)
 
 
-
+#Adicionar datalots - - -
 
 
 
@@ -1431,10 +1427,6 @@ library(RColorBrewer)
 library(leaflet)
 library(ggplot2)
 library(lubridate)
-
-
-#Parking Lots dataset
-garagelots <- read.csv("Issued_Licenses_bn.csv")
 
 # Preparar os nodes (nós)
 nodes <- data %>%
@@ -1472,26 +1464,15 @@ ui <- fluidPage(
                   "Threshold mínimo de reclamações:",
                   min = 1, max = 100, value = 50),
       
-      checkboxGroupInput("borough_filter",
-                         "Selecione os Boroughs:",
-                         choices = c("MANHATTAN", "BROOKLYN","STATEN ISLAND","QUEENS","BRONX"),
-                         selected = c("MANHATTAN", "BROOKLYN","STATEN ISLAND","QUEENS","BRONX")),
-      
       checkboxGroupInput("complaint_filter",
                          "Selecione os tipos de reclamação:",
-                         choices = c("Noise - Residential", "Illegal Parking", "Blocked Driveway", 
-                                     "Noise - Street/Sidewalk", "UNSANITARY CONDITION", 
-                                     "Street Condition", "Street Light Condition", "Noise", 
-                                     "Homeless Person Assistance", "Water System", 
-                                     "General Construction/Plumbing", "Noise - Commercial", 
-                                     "Sanitation Condition", "Dirty Conditions", 
-                                     "Rodent", "Derelict Vehicle", "Derelict Vehicles", 
-                                     "Sidewalk Condition", 
-                                     "Building/Use", "Noise - Vehicle", "WATER LEAK", "Sewer", 
-                                     "Missed Collection (All Materials)", "ELECTRIC", 
-                                     "Taxi Complaint", "Homeless Encampment", "Traffic", "Housing Options"),
-                         selected = c("Noise - Residential", "Illegal Parking")),
+                         choices = unique(data$ComplaintType),
+                         selected = head(unique(data$ComplaintType), 2)),
       
+      checkboxGroupInput("borough_filter",
+                         "Selecione os Boroughs:",
+                         choices = unique(data$Borough),
+                         selected = head(unique(data$Borough), 5)),
       
       actionButton("update", "Atualizar Grafo e Mapa"),
       width = 3
@@ -1499,6 +1480,15 @@ ui <- fluidPage(
     
     mainPanel(
       tabsetPanel(
+        tabPanel("Grafo e Mapa dos Zip Codes", 
+                 fluidRow(
+                   column(width = 12, visNetworkOutput("networkPlot", height = "600px"))
+                 ),
+                 fluidRow(
+                   column(width = 12, leafletOutput("mapPlot", height = "400px"))
+                 )
+        ),
+        
         tabPanel("Localização das Reclamações",
                  h3("Distribuição das Reclamações por Tipo e Borough"),
                  plotOutput("stackedBarPlot", height = "400px"),
@@ -1506,10 +1496,12 @@ ui <- fluidPage(
                  div(
                    style = "text-align: center;",  # Center the map and checkbox
                    leafletOutput("complaintMap", height = "400px"),  # Larger map
-                   checkboxInput("showMap", "Show Garage and Parking Lots 🟠", value = FALSE)
+                   checkboxInput("showMap", "Show Garage Lots", value = FALSE)
                  )
         ),
+                 
         
+        # Nova aba com múltiplos checkboxGroupInputs
         tabPanel("Heatmap e Timeseries plot",
                  sidebarLayout(
                    sidebarPanel(
@@ -1523,15 +1515,6 @@ ui <- fluidPage(
                      h3("Evolução Temporal"),
                      plotOutput("time_series_plot")
                    )
-                 )
-        ),
-        
-        tabPanel("Grafo e Mapa dos Zip Codes", 
-                 fluidRow(
-                   column(width = 12, visNetworkOutput("networkPlot", height = "600px"))
-                 ),
-                 fluidRow(
-                   column(width = 12, leafletOutput("mapPlot", height = "400px"))
                  )
         )
       )
@@ -1635,7 +1618,7 @@ server <- function(input, output, session) {
            x = "Tipo de Reclamação",
            y = "Número de Reclamações") +
       scale_fill_manual(values = borough_colors()) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 11))
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
   })
   
   # Renderizar o mapa dos Complaint Types
@@ -1651,7 +1634,7 @@ server <- function(input, output, session) {
     complaint_types <- levels(filtered_data$ComplaintType)
     color_palette <- RColorBrewer::brewer.pal(min(12, length(complaint_types)), "Set1")
     color_map <- colorFactor(palette = color_palette, domain = complaint_types)
-    
+  
     map <- leaflet(data = filtered_data) %>%
       addTiles() %>%
       addCircleMarkers(
@@ -1692,7 +1675,7 @@ server <- function(input, output, session) {
     
     map
   })
-  
+
   
   # Gerar dinamicamente checkboxGroupInputs para cada ComplaintType selecionado
   output$descriptor_checkboxes <- renderUI({
@@ -1781,5 +1764,3 @@ server <- function(input, output, session) {
 
 # Rodar a aplicação Shiny
 shinyApp(ui = ui, server = server)
-
-
