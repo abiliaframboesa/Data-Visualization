@@ -1188,7 +1188,6 @@ getwd()
 garagelots <- read.csv("Issued_Licenses_bn.csv")
 zip_locations <- read.csv("zip_locations.csv")
 
-
 # UI
 ui <- navbarPage("Dashboard with NYC Complaints",
                  tabPanel("Dashboard",  # Aba principal com os gráficos existentes
@@ -1211,7 +1210,7 @@ ui <- navbarPage("Dashboard with NYC Complaints",
                                                  choices = c("MANHATTAN", "BROOKLYN","STATEN ISLAND","QUEENS","BRONX"), selected = c("MANHATTAN", "BROOKLYN","STATEN ISLAND","QUEENS","BRONX")
                               ),
                               checkboxGroupInput("complaint_type", "Select Complaint Type:",
-                                                 choices = c("Noise - Residential", "Illegal Parking", "Blocked Driveway", "Noise - Street/Sidewalk", "UNSANITARY CONDITION", "Homeless Person Assistance", "Homeless Encampment", "Street Condition", "Street Light Condition", "Sanitation Condition", "General Construction/Plumbing", "Consumer Complaint"), selected = NULL
+                                                 choices = c("Noise - Residential", "Illegal Parking", "Blocked Driveway", "Noise - Street/Sidewalk", "UNSANITARY CONDITION", "Homeless Person Assistance", "Homeless Encampment", "Street Condition", "Street Light Condition", "Sanitation Condition", "General Construction/Plumbing"), selected = NULL
                               )
                             ),
                             mainPanel(
@@ -1226,7 +1225,7 @@ ui <- navbarPage("Dashboard with NYC Complaints",
                             )
                           )
                  ),
-                 tabPanel("Additional Info",  # Nova aba "Additional Info"
+                 tabPanel("Heat Map",  # Nova aba "Additional Info"
                           sidebarLayout(
                             sidebarPanel(
                               width = 3,
@@ -1278,7 +1277,7 @@ ui <- navbarPage("Dashboard with NYC Complaints",
                                                  choices = c("MANHATTAN", "BROOKLYN","STATEN ISLAND","QUEENS","BRONX"), selected = c("MANHATTAN", "BROOKLYN","STATEN ISLAND","QUEENS","BRONX")
                               ),
                               checkboxGroupInput("complaint_type_Networkplot", "Select Complaint Type:",
-                                                 c("Noise - Residential", "Illegal Parking", "Blocked Driveway", "Noise - Street/Sidewalk", "UNSANITARY CONDITION", "Homeless Person Assistance", "Homeless Encampment", "Street Condition", "Street Light Condition", "Sanitation Condition", "General Construction/Plumbing", "Consumer Complaint"), selected = NULL
+                                                 c("Noise - Residential", "Illegal Parking", "Blocked Driveway", "Noise - Street/Sidewalk", "UNSANITARY CONDITION", "Homeless Person Assistance", "Homeless Encampment", "Street Condition", "Street Light Condition", "Sanitation Condition", "General Construction/Plumbing"), selected = NULL
                               )
                             ),
                             mainPanel(
@@ -1317,11 +1316,23 @@ ui <- navbarPage("Dashboard with NYC Complaints",
                                     style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; border-radius: 5px;",
                                     h4("Complaint Type:"),
                                     tags$div(style = "margin-bottom: 5px;",
-                                             tags$span(style = "display: inline-block; width: 20px; height: 2px; background-color: #1b9e77; margin-right: 10px;"), 
+                                             tags$span(style = "display: inline-block; width: 20px; height: 4px; background-color: #1b9e77; margin-right: 10px;"), 
                                              "Homeless Person Assistance"),
                                     tags$div(style = "margin-bottom: 5px;",
-                                             tags$span(style = "display: inline-block; width: 20px; height: 2px; background-color: #666666; margin-right: 10px;"), 
-                                             "Homeless Encampment")
+                                             tags$span(style = "display: inline-block; width: 20px; height: 4px; background-color: #666666; margin-right: 10px;"), 
+                                             "Homeless Encampment"),
+                                    tags$div(style = "margin-bottom: 5px;",
+                                             tags$span(style = "display: inline-block; width: 20px; height: 4px; background-color: #e6ab02; margin-right: 10px;"), 
+                                             "Street Condition"),
+                                    tags$div(style = "margin-bottom: 5px;",
+                                             tags$span(style = "display: inline-block; width: 20px; height: 4px; background-color: #a6761d; margin-right: 10px;"), 
+                                             "Street Light Condition"),
+                                    tags$div(style = "margin-bottom: 5px;",
+                                             tags$span(style = "display: inline-block; width: 20px; height: 4px; background-color: #e7298a; margin-right: 10px;"), 
+                                             "Sanitation Condition"),
+                                    tags$div(style = "margin-bottom: 5px;",
+                                             tags$span(style = "display: inline-block; width: 20px; height: 4px; background-color: #d95f02; margin-right: 10px;"), 
+                                             "General Construction/Plumbing")
                                   )
                                 )
                               )
@@ -1573,7 +1584,7 @@ server <- function(input, output, session) {
     edges <- filtered_edges() %>%
       filter(from %in% nodes$id & to %in% nodes$id) %>%
       mutate(color = sapply(type, function(x) complaint_colors()[[x]]),
-             width = 2)  # Define a largura padrão para as linhas)
+             width = 3)  # Define a largura padrão para as linhas)
     
     visNetwork(nodes, edges) %>%
       visNodes(color = list(background = nodes$color),
