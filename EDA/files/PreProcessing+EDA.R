@@ -1783,3 +1783,317 @@ server <- function(input, output, session) {
 shinyApp(ui = ui, server = server)
 
 
+
+#########################################################################################################################
+# ----------------------------------------------------- DIANA DASHBOARD SEM GRAFO ---------------------------------------
+##########################################################################################################################
+
+library(shiny)
+library(leaflet)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(RColorBrewer)
+
+# duplicar a coluna de IssuedDate com o nome IssuedHour
+data$IssuedHour <- data$IssuedDate
+
+#Converter para o formato de hora a coluna IssuedHour
+data$Hour <- format(data$IssuedHour, "%H")  # Extrai apenas a hora --> importante para o heatmap plot
+
+#Converter para o formato de data a coluna de IssuedDate --> importante para o timeseries plot
+data$IssuedDate <- as.Date(data$IssuedDate)
+
+getwd()
+garagelots <- read.csv("Issued_Licenses_bn.csv")
+zip_locations <- read.csv("zip_locations.csv")
+
+
+# UI
+ui <- navbarPage("Dashboard with NYC Complaints",
+                 tabPanel("Dashboard",  # Aba principal com os gráficos existentes
+                          sidebarLayout(
+                            sidebarPanel(
+                              width = 3,
+                              sliderInput("threshold", "Minimum Complaint Threshold:",
+                                          min = 1, max = 100, value = 50
+                              ),
+                              checkboxGroupInput("day_of_week", "Select Days of the Week:",
+                                                 choices = unique(data$weekday), selected = unique(data$weekday)
+                              ),
+                              sliderInput("timeSlider", "Select Date Range:",
+                                          min = as.Date("2016-09-01"),
+                                          max = as.Date("2016-09-30"),
+                                          value = c(as.Date("2016-09-01"), as.Date("2016-09-30")),
+                                          timeFormat = "%Y-%m-%d"
+                              ),
+                              checkboxGroupInput("boroughs", "Select Borough:",
+                                                 choices = unique(data$Borough), selected = unique(data$Borough)
+                              ),
+                              checkboxGroupInput("complaint_type", "Select Complaint Type:",
+                                                 choices = unique(data$ComplaintType), selected = NULL
+                              )
+                            ),
+                            mainPanel(
+                              fluidRow(
+                                column(7, plotlyOutput("complaints_by_borough")),
+                                column(5, plotlyOutput("complaints_over_time"))
+                              ),
+                              fluidRow(
+                                column(12, leafletOutput("map_dashboard")),  # Mapa para a primeira aba
+                                checkboxInput("showMap", "Show Garage and Parking Lots 🟠", value = FALSE)
+                              )
+                            )
+                          )
+                 ),
+                 tabPanel("Additional Info",  # Nova aba "Additional Info"
+                          sidebarLayout(
+                            sidebarPanel(
+                              width = 3,
+                              sliderInput("threshold_additional", "Minimum Complaint Threshold (Additional Info):",
+                                          min = 1, max = 100, value = 50
+                              ),
+                              checkboxGroupInput("day_of_week_additional", "Select Days of the Week (Additional Info):",
+                                                 choices = unique(data$weekday), selected = unique(data$weekday)
+                              ),
+                              sliderInput("timeSlider_additional", "Select Date Range (Additional Info):",
+                                          min = as.Date("2016-09-01"),
+                                          max = as.Date("2016-09-30"),
+                                          value = c(as.Date("2016-09-01"), as.Date("2016-09-30")),
+                                          timeFormat = "%Y-%m-%d"
+                              ),
+                              checkboxGroupInput("boroughs_additional", "Select Borough (Additional Info):",
+                                                 choices = unique(data$Borough), selected = unique(data$Borough)
+                              ),
+                              checkboxGroupInput("complaint_type_additional", "Select Complaint Type (Additional Info):",
+                                                 choices = unique(data$ComplaintType), selected = NULL
+                              )
+                            ),
+                            mainPanel(
+                              fluidRow(column(12, plotlyOutput("additional_plot"))),
+                              fluidRow(
+                                column(12, leafletOutput("map_additional")),  # Mapa para a segunda aba
+                                checkboxInput("showMap_additional", "Show Garage and Parking Lots 🟠", value = FALSE)
+                              )
+                            )
+                          )
+                 ),
+                 tabPanel("Data Table",  # Nova aba "Data Table"
+                          sidebarLayout(
+                            sidebarPanel(
+                              width = 3,
+                              sliderInput("threshold_table", "Minimum Complaint Threshold (Data Table):",
+                                          min = 1, max = 100, value = 50
+                              ),
+                              checkboxGroupInput("boroughs_table", "Select Borough (Data Table):",
+                                                 choices = unique(data$Borough), selected = unique(data$Borough)
+                              ),
+                              checkboxGroupInput("complaint_type_table", "Select Complaint Type (Data Table):",
+                                                 choices = unique(data$ComplaintType), selected = NULL
+                              )
+                            ),
+                            mainPanel(
+                              DT::dataTableOutput("data_table")  # Exibindo a tabela interativa
+                            )
+                          )
+                 )
+)
+
+# Server logic
+server <- function(input, output, session) {
+  
+  # Reactive filtered dataset
+  filtered_data <- reactive({
+    data %>%
+      filter(
+        ComplaintType %in% input$complaint_type,
+        weekday %in% input$day_of_week,
+        IssuedDate >= input$timeSlider[1],
+        IssuedDate <= input$timeSlider[2],
+        Borough %in% input$boroughs
+      )
+  })
+  
+  # Complaints over time plot
+  output$complaints_over_time <- renderPlotly({
+    req(nrow(filtered_data()) > 0)  # Garante que há dados para exibir
+    p <- ggplot(filtered_data(), aes(x = IssuedDate, color = ComplaintType)) +
+      geom_line(stat = "count") +
+      labs(title = "Complaints Over Time",
+           x = "Date", y = "Number of Complaints") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            legend.position = "bottom")
+    
+    ggplotly(p)  # Transformando o gráfico ggplot em um gráfico interativo
+  })
+  
+  # Complaints by borough plot
+  output$complaints_by_borough <- renderPlotly({
+    req(nrow(filtered_data()) > 0)  # Garante que há dados para exibir
+    p <- ggplot(filtered_data(), aes(x = Borough, fill = ComplaintType)) +
+      geom_bar() +
+      labs(title = "Complaints by Borough",
+           x = "Borough", y = "Number of Complaints") +
+      theme_minimal() +
+      theme(legend.position = "bottom")
+    
+    ggplotly(p)  # Transformando o gráfico ggplot em um gráfico interativo
+  })
+  
+  # Mapa para a primeira aba (Dashboard)
+  output$map_dashboard <- renderLeaflet({
+    req(nrow(filtered_data()) > 0)  # Garante que há dados para exibir
+    
+    # Criando uma paleta de cores baseada nos tipos de reclamação
+    complaint_types <- unique(filtered_data()$ComplaintType)
+    color_palette <- RColorBrewer::brewer.pal(min(12, length(complaint_types)), "Set1")
+    color_map <- colorFactor(palette = color_palette, domain = complaint_types)
+    
+    # Criando o mapa inicial
+    map <- leaflet(filtered_data()) %>%
+      addTiles() %>%
+      setView(lng = -73.9665, lat = 40.7812, zoom = 11) %>%
+      addCircleMarkers(
+        ~Longitude, ~Latitude,
+        radius = 5,  # Ajuste o raio conforme necessário
+        color = ~color_map(ComplaintType),  # Cor baseada no tipo de reclamação
+        fillColor = ~color_map(ComplaintType),
+        fillOpacity = 0.8,
+        stroke = FALSE,
+        popup = ~paste0("<strong>Tipo de Reclamação:</strong> ", ComplaintType,
+                        "<br><strong>Borough:</strong> ", Borough,
+                        "<br><strong>Data:</strong> ", IssuedDate)
+      ) %>%
+      addLegend(
+        "bottomright", 
+        pal = color_map, 
+        values = ~ComplaintType,
+        title = "Complaint Types",
+        opacity = 1
+      )
+    
+    # Adiciona os marcadores de garagens se a checkbox estiver marcada
+    if (input$showMap) {
+      map <- map %>%
+        addCircleMarkers(
+          data = garagelots,
+          lng = ~Longitude,
+          lat = ~Latitude,
+          popup = ~paste(
+            "<strong>Borough:</strong>", Borough, "<br>",
+            "<strong>Business:</strong>", Business.Name
+          ),
+          radius = 5,
+          color = "orange",
+          fillOpacity = 0.7
+        )
+    }
+    
+    map
+  })
+  
+  # Gráfico adicional na nova aba
+  # Reactive filtered dataset for additional info tab
+  filtered_data_additional <- reactive({
+    data %>%
+      filter(
+        ComplaintType %in% input$complaint_type_additional,
+        weekday %in% input$day_of_week_additional,
+        IssuedDate >= input$timeSlider_additional[1],
+        IssuedDate <= input$timeSlider_additional[2],
+        Borough %in% input$boroughs_additional
+      )
+  })
+  
+  # Gráfico de heatmap na aba "Additional Info"
+  output$additional_plot <- renderPlotly({
+    req(nrow(filtered_data_additional()) > 0)  # Garante que há dados para exibir
+    
+    # Criando uma nova variável com a coluna 'hour' adicionada (não modificando diretamente o reativo)
+    data_with_hour <- filtered_data_additional() %>%
+      mutate(hour = Hour)  # Criando a nova coluna 'hour' com a informação da coluna 'Hour'
+    
+    # Agrupando os dados por dia da semana e hora
+    heatmap_data <- data_with_hour %>%
+      count(weekday, hour)  # Contando o número de reclamações por dia da semana e hora
+    
+    # Gerando o gráfico de heatmap com ggplot
+    p <- ggplot(heatmap_data, aes(x = hour, y = weekday, fill = n)) +
+      geom_tile() +
+      scale_fill_gradient(low = "white", high = "red") +  # Gradiente de cores
+      labs(title = "Complaints Distribution by Hour and Day of Week",
+           x = "Hour of Day",
+           y = "Day of Week",
+           fill = "Number of Complaints") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            axis.text.y = element_text(size = 10),
+            legend.position = "right")
+    
+    ggplotly(p)  # Transformando o gráfico ggplot em um gráfico interativo
+  })
+  
+  # Mapa para a segunda aba (Additional Info)
+  output$map_additional <- renderLeaflet({
+    req(nrow(filtered_data_additional()) > 0)  # Garante que há dados para exibir
+    
+    # Criando uma paleta de cores baseada nos tipos de reclamação
+    complaint_types <- unique(filtered_data_additional()$ComplaintType)
+    color_palette <- RColorBrewer::brewer.pal(min(12, length(complaint_types)), "Set1")
+    color_map <- colorFactor(palette = color_palette, domain = complaint_types)
+    
+    # Criando o mapa inicial para a segunda aba
+    map <- leaflet(filtered_data_additional()) %>%
+      addTiles() %>%
+      setView(lng = -73.9665, lat = 40.7812, zoom = 11) %>%
+      addCircleMarkers(
+        ~Longitude, ~Latitude,
+        radius = 5,  # Ajuste o raio conforme necessário
+        color = ~color_map(ComplaintType),  # Cor baseada no tipo de reclamação
+        fillColor = ~color_map(ComplaintType),
+        fillOpacity = 0.8,
+        stroke = FALSE,
+        popup = ~paste0("<strong>Tipo de Reclamação:</strong> ", ComplaintType,
+                        "<br><strong>Borough:</strong> ", Borough,
+                        "<br><strong>Data:</strong> ", IssuedDate)
+      ) %>%
+      addLegend(
+        "bottomright", 
+        pal = color_map, 
+        values = ~ComplaintType,
+        title = "Complaint Types",
+        opacity = 1
+      )
+    
+    # Adiciona os marcadores de garagens se a checkbox estiver marcada
+    if (input$showMap_additional) {
+      map <- map %>%
+        addCircleMarkers(
+          data = garagelots,
+          lng = ~Longitude,
+          lat = ~Latitude,
+          popup = ~paste(
+            "<strong>Borough:</strong>", Borough, "<br>",
+            "<strong>Business:</strong>", Business.Name
+          ),
+          radius = 5,
+          color = "orange",
+          fillOpacity = 0.7
+        )
+    }
+    
+    map
+  })
+  
+  # Tabela de dados na nova aba
+  output$data_table <- DT::renderDataTable({
+    req(nrow(filtered_data()) > 0)  # Garante que há dados para exibir
+    filtered_data()  # Exibe os dados filtrados na tabela
+  })
+}
+
+# Run the app
+shinyApp(ui = ui, server = server)
+
+
