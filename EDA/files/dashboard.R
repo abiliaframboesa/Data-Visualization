@@ -2153,13 +2153,13 @@ server <- function(input, output, session) {
     setNames(colors, types)
   })
   
-  # Filter edges
+
   filtered_edges <- reactive({
     edges_filtered_with_count %>%
       filter(type %in% input$complaint_type_Networkplot, n >= input$threshold)
   })
   
-  # Filter nodes
+
   filtered_nodes <- reactive({
     nodes %>%
       filter(id %in% c(filtered_edges()$from, filtered_edges()$to)) %>%
@@ -2167,7 +2167,7 @@ server <- function(input, output, session) {
       distinct(id, .keep_all = TRUE)
   })
   
-  # Render network plot
+
   output$networkPlot <- renderVisNetwork({
     req(filtered_edges())
     req(filtered_nodes())
@@ -2191,7 +2191,7 @@ server <- function(input, output, session) {
       visInteraction(dragNodes = TRUE, dragView = TRUE)
   })
   
-  # Render map
+
   output$mapPlot <- renderLeaflet({
     req(filtered_nodes())
     req(all(c("Latitude", "Longitude") %in% names(filtered_nodes())))
@@ -2215,19 +2215,19 @@ server <- function(input, output, session) {
       )
   })
   
-  # Complaint by Zip Code barplot
+
   output$complaints_by_Zipcode <- renderPlotly({
     # Ensure filtered_nodes and filtered_edges are available and contain data
     req(nrow(filtered_nodes()) > 0, nrow(filtered_edges()) > 0)
     
-    # Combine filtered nodes and edges to create the data for plotting
+
     plot_data <- filtered_edges() %>%
       inner_join(filtered_nodes(), by = c("from" = "id")) %>%
       group_by(from, type) %>%
       summarize(Count = n(), .groups = "drop") %>%
       rename(ZipCode = from, ComplaintType = type)
     
-    # Create the barplot
+    #barplot
     p <- ggplot(plot_data, aes(x = ZipCode, y = Count, fill = ComplaintType)) +
       geom_bar(stat = "identity", position = "dodge") +
       labs(
