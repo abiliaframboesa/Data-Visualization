@@ -1867,7 +1867,7 @@ ui <- navbarPage("Dashboard with NYC Complaints",
                                 column(5, plotlyOutput("complaints_over_time"))
                               ),
                               fluidRow(
-                                column(12, leafletOutput("map_dashboard")),  # Mapa para a primeira aba
+                                column(12, leafletOutput("map_dashboard", height = "600px")),  # Mapa para a primeira aba
                                 checkboxInput("showMap", "Show Garage and Parking Lots 🟠", value = FALSE)
                               )
                             )
@@ -1930,8 +1930,7 @@ ui <- navbarPage("Dashboard with NYC Complaints",
                             ),
                             mainPanel(
                               fluidRow(
-                                column(width = 6, visNetworkOutput("networkPlot", height = "400px")),
-                                column(width = 6, plotlyOutput("complaints_by_Zipcode", height = "400px"))
+                                column(width = 12, visNetworkOutput("networkPlot", height = "600px"))
                               ),
                               fluidRow(
                                 column(width = 12, leafletOutput("mapPlot", height = "400px"))
@@ -1983,7 +1982,7 @@ server <- function(input, output, session) {
   
   # Mapa para a primeira aba (Dashboard)
   output$map_dashboard <- renderLeaflet({
-    req(nrow(filtered_data()) > 0)  # Garante que há dados para exibir
+    req(data, garagelots)
     
     # Criando uma paleta de cores baseada nos tipos de reclamação
     complaint_types <- unique(filtered_data()$ComplaintType)
@@ -2212,37 +2211,6 @@ server <- function(input, output, session) {
         fillOpacity = 0.8,
         popup = ~paste0("<strong>ZIP Code:</strong> ", id, 
                         "<br><strong>Borough:</strong> ", Borough)
-      )
-  })
-  
-
-  output$complaints_by_Zipcode <- renderPlotly({
-    # Ensure filtered_nodes and filtered_edges are available and contain data
-    req(nrow(filtered_nodes()) > 0, nrow(filtered_edges()) > 0)
-    
-
-    plot_data <- filtered_edges() %>%
-      inner_join(filtered_nodes(), by = c("from" = "id")) %>%
-      group_by(from, type) %>%
-      summarize(Count = n(), .groups = "drop") %>%
-      rename(ZipCode = from, ComplaintType = type)
-    
-    #barplot
-    p <- ggplot(plot_data, aes(x = ZipCode, y = Count, fill = ComplaintType)) +
-      geom_bar(stat = "identity", position = "dodge") +
-      labs(
-        title = "Complaints by Zip Code",
-        x = "Zip Code",
-        y = "Number of Complaints"
-      ) +
-      theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)
-      )
-    
-    ggplotly(p) %>%
-      layout(
-        autosize = TRUE,
-        xaxis = list(tickangle = 45)
       )
   })
 }
