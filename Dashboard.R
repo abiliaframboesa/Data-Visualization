@@ -744,21 +744,21 @@ data$Hour <- format(data$IssuedHour, "%H")  # Extrai apenas a hora --> important
 #Converter para o formato de data a coluna de IssuedDate --> importante para o timeseries plot
 data$IssuedDate <- as.Date(data$IssuedDate)
 
-garagelots <- read.csv("Issued_Licenses_bn.csv")
-zip_locations <- read.csv("zip_locations.csv")
+garagelots <- read.csv("Files/Issued_Licenses_bn.csv")
+zip_locations <- read.csv("Files/zip_locations.csv")
 
 # Preparar os nodes (nós)
 nodes <- data %>%
-  filter(!is.na(Incident Zip) & Incident Zip != "") %>%
-  distinct(Incident Zip, Borough, Latitude, Longitude) %>%
-  rename(id = Incident Zip)
+  filter(!is.na(`Incident Zip`) & `Incident Zip` != "") %>%
+  distinct(`Incident Zip`, `Borough`, `Latitude`, `Longitude`) %>%
+  rename(id = `Incident Zip`)
 
 # Preparar os edges (arestas)
 edges <- data %>%
-  filter(!is.na(Incident Zip) & Incident Zip != "") %>%
+  filter(!is.na(`Incident Zip`) & `Incident Zip` != "") %>%
   group_by(ComplaintType) %>%
-  filter(n_distinct(Incident Zip) > 1) %>%
-  reframe(pairs = list(combn(unique(Incident Zip), 2, simplify = FALSE))) %>%
+  filter(n_distinct(`Incident Zip`) > 1) %>%
+  reframe(pairs = list(combn(unique(`Incident Zip`), 2, simplify = FALSE))) %>%
   filter(lengths(pairs) > 0) %>%
   unnest(pairs) %>%
   transmute(from = map_chr(pairs, 1),
