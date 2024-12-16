@@ -287,7 +287,7 @@ complaints_sf <- st_as_sf(date_format, coords = c("Longitude", "Latitude"), crs 
 
 
 # Load borough boundaries
-boroughs <- st_read("geo_export_bca88cbd-0aab-46db-891b-2acf63e33536.shp")
+boroughs <- st_read("Files/geo_export_bca88cbd-0aab-46db-891b-2acf63e33536.shp")
 
 
 # Spatial join complaints to boroughs
@@ -390,8 +390,6 @@ heatmap_24h <- ggplot(complaint_counts, aes(x = hour, y = weekday, fill = count)
 
 # Print the plot
 print(heatmap_24h)
-ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_24h.png", plot = heatmap_24h, width = 6, height = 4, dpi = 300)
-
 
 # ----- DE 3 EM 3 HORAS 
 
@@ -429,7 +427,6 @@ heatmap_3_3 <- ggplot(complaint_counts, aes(x = hour_group, y = weekday, fill = 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 print(heatmap_3_3)
-ggsave("C:/Users/Ana Luísa/Desktop/graficos/heatmap_3_3.png", plot = heatmap_3_3, width = 6, height = 4, dpi = 300)
 
 
 #  ------------------- PIEPLOT OF COMPLAINT TYPES 
@@ -561,7 +558,7 @@ heatmap_data <- cleaned_data %>%
   summarise(Count = n(), .groups = "drop")
 
 # Load New York City shapefile (you need to download this shapefile beforehand)
-nyc_shapefile <- st_read("geo_export_bca88cbd-0aab-46db-891b-2acf63e33536.shp")
+nyc_shapefile <- st_read("Files/geo_export_bca88cbd-0aab-46db-891b-2acf63e33536.shp")
 
 
 # Convert cleaned data to sf object for spatial mapping
@@ -744,9 +741,34 @@ data$Hour <- format(data$IssuedHour, "%H")  # Extrai apenas a hora --> important
 #Converter para o formato de data a coluna de IssuedDate --> importante para o timeseries plot
 data$IssuedDate <- as.Date(data$IssuedDate)
 
-garagelots <- read.csv("Issued_Licenses_bn.csv")
-zip_locations <- read.csv("zip_locations.csv")
+garagelots <- read.csv("Files/Issued_Licenses_bn.csv")
+zip_locations <- read.csv("Files/zip_locations.csv")
 
+# Preparar os nodes (nós)
+nodes <- data %>%
+  filter(!is.na(`Incident Zip`) & `Incident Zip` != "") %>%
+  distinct(`Incident Zip`, `Borough`, `Latitude`, `Longitude`) %>%
+  rename(id = `Incident Zip`)
+
+# Preparar os edges (arestas)
+edges <- data %>%
+  filter(!is.na(`Incident Zip`) & `Incident Zip` != "") %>%
+  group_by(ComplaintType) %>%
+  filter(n_distinct(`Incident Zip`) > 1) %>%
+  reframe(pairs = list(combn(unique(`Incident Zip`), 2, simplify = FALSE))) %>%
+  filter(lengths(pairs) > 0) %>%
+  unnest(pairs) %>%
+  transmute(from = map_chr(pairs, 1),
+            to = map_chr(pairs, 2),
+            type = ComplaintType)
+
+edges_count <- edges %>%
+  count(from, to) %>%
+  filter(n >= 50)
+
+edges_filtered_with_count <- edges %>%
+  left_join(edges_count, by = c("from", "to")) %>%
+  filter(!is.na(n))
 
 # UI
 ui <- navbarPage("Dashboard with NYC Complaints",
@@ -1182,3 +1204,4 @@ server <- function(input, output, session) {
 
 # Run the app
 shinyApp(ui = ui, server = server)
+
