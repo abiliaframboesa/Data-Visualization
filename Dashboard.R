@@ -133,6 +133,16 @@ data$IssueBalance <- difftime(data$DueDate, data$ResolutionDate, units = "secs")
 # Create a column for the days of the week
 Sys.setlocale("LC_TIME", "C")
 data$weekday <- weekdays(data$IssuedDate)
+
+# duplicar a coluna de IssuedDate com o nome IssuedHour
+data$IssuedHour <- data$IssuedDate
+
+#Converter para o formato de hora a coluna IssuedHour
+data$Hour <- format(data$IssuedHour, "%H")  # Extrai apenas a hora --> importante para o heatmap plot
+
+#Converter para o formato de data a coluna de IssuedDate --> importante para o timeseries plot
+data$IssuedDate <- as.Date(data$IssuedDate)
+
 #View(data)
 
 #############
